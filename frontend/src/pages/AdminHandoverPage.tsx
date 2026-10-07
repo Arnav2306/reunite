@@ -1,0 +1,226 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError } from '../services/api';
+import type { Handover } from '../types/recovery';
+import { ShieldCheck, KeyRound, CheckCircle, AlertCircle, Loader2, User, Package } from 'lucide-react';
+
+export const AdminHandoverPage: React.FC = () => {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [otpInputs, setOtpInputs] = useState<Record<string, string>>({});
+  const [actionError, setActionError] = useState<Record<string, string | null>>({});
+
+  const queryClient = useQueryClient();
+
+  const { data: handovers = [], isLoading, isError } = useQuery<Handover[]>({
+    queryKey: ['admin-handovers', statusFilter],
+    queryFn: async () => {
+      const url = `/api/handovers/admin/?status=${statusFilter}`;
+      const res = await api.get<Handover[] | { results: Handover[] }>(url);
+      return Array.isArray(res) ? res : res.results || [];
+    },
+  });
+
+  // Verify OTP mutation
+  const verifyOtpMutation = useMutation({
+    mutationFn: async ({ handoverId, otp }: { handoverId: string; otp: string }) => {
+      return api.post(`/api/handovers/admin/${handoverId}/verify-otp/`, { otp });
+    },
+    onSuccess: (_, vars) => {
+      setActionError((prev) => ({ ...prev, [vars.handoverId]: null }));
+      setOtpInputs((prev) => ({ ...prev, [vars.handoverId]: '' }));
+      queryClient.invalidateQueries({ queryKey: ['admin-handovers'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+    },
+    onError: (err: ApiError, vars) => {
+      setActionError((prev) => ({
+        ...prev,
+        [vars.handoverId]: err.message || 'OTP verification failed.',
+      }));
+    },
+  });
+
+  // Confirm collection mutation (for general items)
+  const confirmCollectionMutation = useMutation({
+    mutationFn: async (handoverId: string) => {
+      return api.post(`/api/handovers/admin/${handoverId}/confirm-collection/`);
+    },
+    onSuccess: (_, handoverId) => {
+      setActionError((prev) => ({ ...prev, [handoverId]: null }));
+      queryClient.invalidateQueries({ queryKey: ['admin-handovers'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+    },
+    onError: (err: ApiError, handoverId) => {
+      setActionError((prev) => ({
+        ...prev,
+        [handoverId]: err.message || 'Failed to confirm collection.',
+      }));
+    },
+  });
+
+  const handleOtpInputChange = (handoverId: string, val: string) => {
+    setOtpInputs((prev) => ({ ...prev, [handoverId]: val }));
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Admin Handover & OTP Center</h1>
+          <p className="text-sm text-slate-600 mt-1">
+            Perform physical handover verification for approved items. Verify 6-digit OTPs for valuable items or confirm physical collection for general items.
+          </p>
+        </div>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white"
+        >
+          <option value="all">All Handovers</option>
+          <option value="READY">Ready for Collection</option>
+          <option value="PENDING_OTP">Pending OTP Verification</option>
+          <option value="COMPLETED">Completed Handovers</option>
+          <option value="FAILED">Failed / Locked</option>
+        </select>
+      </div>
+
+      {isLoading ? (
+        <div className="py-16 text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-slate-400" />
+          <p className="text-sm text-slate-500 mt-2">Loading handovers queue...</p>
+        </div>
+      ) : isError ? (
+        <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-center text-sm text-red-700">
+          Failed to load handovers list. Please verify staff permissions.
+        </div>
+      ) : handovers.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
+          <ShieldCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800">No handovers pending</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+            There are currently no active handovers matching status <span className="font-semibold">{statusFilter}</span>.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {handovers.map((handover) => {
+            const item = handover.found_item;
+            const student = handover.student;
+            const err = actionError[handover.public_id];
+            const otpVal = otpInputs[handover.public_id] || '';
+
+            return (
+              <div
+                key={handover.public_id}
+                className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between space-y-4"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-bold text-slate-900 text-base">{item?.title || 'Item'}</h3>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                        handover.status === 'COMPLETED'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : handover.status === 'FAILED'
+                          ? 'bg-red-100 text-red-800 border border-red-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      {handover.status}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1 text-slate-700">
+                    <div className="flex items-center space-x-1.5 font-medium">
+                      <User className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Claimant:</span>
+                      <span className="font-bold text-slate-900">{student?.name || 'Student'}</span> ({student?.email})
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <Package className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Category / Risk:</span>
+                      <span className="font-semibold">{item?.category}</span> ({handover.is_valuable ? 'Valuable Item' : 'General Item'})
+                    </div>
+                  </div>
+
+                  {err && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700 flex items-start space-x-1.5">
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      <span>{err}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Handover Action Footer */}
+                <div className="pt-3 border-t border-slate-100">
+                  {handover.status === 'COMPLETED' ? (
+                    <div className="text-xs font-semibold text-emerald-700 flex items-center justify-center py-2 bg-emerald-50 border border-emerald-200 rounded-md">
+                      <CheckCircle className="w-4 h-4 mr-1.5 text-emerald-600" />
+                      Physical Collection Completed & Resolved
+                    </div>
+                  ) : handover.status === 'FAILED' ? (
+                    <div className="text-xs font-semibold text-red-700 flex items-center justify-center py-2 bg-red-50 border border-red-200 rounded-md">
+                      <AlertCircle className="w-4 h-4 mr-1.5 text-red-600" />
+                      Handover Locked (Max OTP Attempts Exceeded)
+                    </div>
+                  ) : handover.is_valuable ? (
+                    /* Valuable Item OTP Verification */
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Enter Student 6-Digit OTP Code:
+                      </label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          maxLength={6}
+                          placeholder="e.g. 849201"
+                          value={otpVal}
+                          onChange={(e) => handleOtpInputChange(handover.public_id, e.target.value)}
+                          className="flex-1 px-3 py-1.5 text-sm font-mono tracking-widest text-center border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            verifyOtpMutation.mutate({
+                              handoverId: handover.public_id,
+                              otp: otpVal,
+                            })
+                          }
+                          disabled={verifyOtpMutation.isPending || otpVal.length !== 6}
+                          className="px-4 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-md shadow-xs flex items-center shrink-0"
+                        >
+                          {verifyOtpMutation.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          ) : (
+                            <KeyRound className="w-3.5 h-3.5 mr-1" />
+                          )}
+                          Verify OTP
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* General Item Physical Collection Confirmation */
+                    <button
+                      type="button"
+                      onClick={() => confirmCollectionMutation.mutate(handover.public_id)}
+                      disabled={confirmCollectionMutation.isPending}
+                      className="w-full py-2 px-4 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs rounded-md shadow-xs transition-colors flex items-center justify-center"
+                    >
+                      {confirmCollectionMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                      ) : (
+                        <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
+                      )}
+                      Confirm Physical Collection
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};

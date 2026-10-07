@@ -1,0 +1,26 @@
+{
+  "stations": [
+    {
+      "code": "OFFICIAL-STATION-CODE-1",
+      "building": "OFFICIAL-BUILDING-NAME",
+      "floor": "OFFICIAL-FLOOR-NUMBER",
+      "name": "OFFICIAL-CABIN-OR-STATION-NAME",
+      "status": "ACTIVE",
+      "directions": "OFFICIAL-WALKING-DIRECTIONS-WITHIN-CAMPUS",
+      "opening_hours": {
+        "Monday - Friday": "09:00 - 17:00"
+      }
+    },
+    {
+      "code": "OFFICIAL-STATION-CODE-2",
+      "building": "OFFICIAL-BUILDING-NAME",
+      "floor": "OFFICIAL-FLOOR-NUMBER",
+      "name": "OFFICIAL-CABIN-OR-STATION-NAME",
+      "status": "ACTIVE",
+      "directions": "OFFICIAL-WALKING-DIRECTIONS-WITHIN-CAMPUS",
+      "opening_hours": {
+        "Monday - Friday": "09:00 - 17:00"
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+﻿# REUNITE Backend Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core Django
+Django==6.1
+djangorestframework==3.18.0
+asgiref==3.12.1
+
+# Image handling
+Pillow==12.3.0
+
+# CORS headers
+django-cors-headers==4.9.0
+
+# Database
+# SQLite is built in (development)
+# PostgreSQL (production):
+psycopg2-binary==2.9.12
+
+# Environment
+python-dotenv==1.2.3
+
+# Production server
+gunicorn==26.2.0
+
+# Optional: Background tasks
+celery==5.6.3
+redis==8.1.0
+
+# Utilities
+requests==2.34.2
+sqlparse==0.6.0
