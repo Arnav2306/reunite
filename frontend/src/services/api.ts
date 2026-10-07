@@ -43,8 +43,9 @@ interface RequestOptions extends RequestInit {
 export async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { requiresAuth = true, headers = {}, ...restOptions } = options;
 
+  const isFormData = typeof FormData !== 'undefined' && restOptions.body instanceof FormData;
   const requestHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(headers as Record<string, string>),
   };
 
@@ -55,8 +56,10 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     }
   }
 
-  // Use relative path which is proxied by Vite to http://127.0.0.1:8000
-  const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  // Prepend VITE_API_URL if configured, otherwise use relative path (proxied in dev, same-origin in prod)
+  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = apiBase ? `${apiBase}${normalizedEndpoint}` : normalizedEndpoint;
 
   const response = await fetch(url, {
     ...restOptions,

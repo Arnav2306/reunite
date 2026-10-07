@@ -147,7 +147,7 @@ cd backend
 python manage.py setup_campus_stations --file campus_stations.json
 ```
 
-For operational procedures during a campus trial, see the [Campus Pilot Runbook](docs/CAMPUS_PILOT_RUNBOOK.md).
+For operational procedures during a campus trial, see the [Campus Pilot Runbook](docs/CAMPUS_PILOT_RUNBOOK.md) and the [Pilot Readiness Checklist](PILOT_READINESS_CHECKLIST.md).
 
 
 ---
