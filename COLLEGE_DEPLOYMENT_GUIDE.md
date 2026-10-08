@@ -197,36 +197,42 @@ REUNITE supports AI-assisted image analysis powered by **Google Gemini 2.5 Flash
 
 On the first day of the pilot launch, the institutional pilot team should execute this 17-step verification sequence using dedicated test accounts:
 
-1. **Verify HTTPS**: Open `https://reunite.campus.edu` in a standard browser; confirm secure connection and zero mixed-content errors.
-2. **Verify Student Registration**: Register a test student account using an official campus email address.
-3. **Verify Administrator Login**: Log into `/admin/` and the staff interface using the superuser credentials.
-4. **Verify Campus Stations**: Confirm all official stations appear correctly on the campus map and station listings (`/stations`).
-5. **Submit Test Lost Report**: Log a test lost item with distinguishing questions at `/lost`.
-6. **Submit Test Found Report**: Log a test found item with a photo upload at `/found`.
-7. **Verify Photo Handling**: Confirm uploaded photo displays correctly from persistent storage.
-8. **Verify AI / Manual Fallback**: Verify AI suggestion appears, or confirm manual fallback allows editing and submission.
-9. **Publish Test Found Item**: Log in as custodian, review the item, and click **Publish**.
-10. **Submit Test Claim**: As the student, locate the item in `/available-items` or `/matches` and submit a claim.
-11. **Verify Ownership Review**: In `/admin/verification`, compare student answers against private item details; approve the claim.
-12. **Test General-Item Handover**: For a low-value test item, confirm physical handover without an OTP requirement.
-13. **Test Valuable-Item OTP**: For a high-value item (Tier 1), verify 6-digit OTP delivery to the student notification inbox and successful verification by the custodian.
-14. **Verify RESOLVED State**: Confirm item status transitions to `RESOLVED` upon collection.
-15. **Verify Audit History**: Confirm full event record appears in the administrative audit logs.
-16. **Clean Test Records**: Mark or delete the test items so only genuine campus reports remain.
-17. **Authorize Controlled Pilot**: Announce platform availability to the selected pilot student cohort.
+1. **Website & HTTPS Reachability**: Open `https://reunite.campus.edu` in a browser; verify secure HTTPS connection, zero mixed-content errors, and valid SSL certificate.
+2. **Student Authentication & Login**: Register a test student account with an institutional email and verify login.
+3. **Administrator Login & Access**: Log into `/admin/` and staff dashboard using the superuser credentials.
+4. **Campus Station Selection**: Open `/stations` and verify configured collection desks display correct buildings, floors, and hours.
+5. **Station QR Workflow**: Scan or navigate to a station QR URL (e.g. `/stations/RNT-B1-F02-S01`); verify station details pre-fill and display correctly.
+6. **Student Lost Report**: Submit a test lost item at `/lost` with category, description, location, time, and 3-4 discriminating questions.
+7. **Student Found Report**: Submit a test found item at `/found` with location and physical details.
+8. **Photo Upload & Media Handling**: Upload a test photograph; verify file upload succeeds and image loads from persistent `MEDIA_ROOT`.
+9. **AI Analysis & Manual Fallback**: Confirm Gemini 2.5 Flash suggests structured attributes, or verify manual entry succeeds smoothly when AI is disabled.
+10. **Custodian / Admin Review**: Custodian accesses the review dashboard, inspects the found item, and edits attributes if needed.
+11. **Item Publication**: Custodian publishes the item so it transitions to `SECURE_HOLD` and appears in the student catalog.
+12. **Deterministic Matching**: Verify match candidate scoring computes (0–100) and displays explainability breakdowns at `/matches`.
+13. **Ownership Claim**: Student locates the matching item in `/available-items` or `/matches` and submits ownership proof.
+14. **Staff Verification Review**: In `/admin/verification`, custodian inspects student answer against private attributes and approves claim.
+15. **General-Item Handover**: For a low-value test item (Tier 0), custodian confirms physical collection without OTP requirement; status transitions to `RESOLVED`.
+16. **Valuable-Item OTP Handover**: For a high-value test item (Tier 1), verify 6-digit OTP delivery to student notification inbox, custodian verification in `/admin/handovers`, and single-use invalidation.
+17. **Audit & Notification Verification**: Confirm notifications arrive in student inbox, audit trail logs all custody events and approvals, test records are cleared/resolved, and the live pilot is authorized.
 
 ---
 
 ## 8. OPERATIONAL INCIDENT PROCEDURES
 
-| Incident | Operational Procedure |
-|---|---|
-| **Website or Server Unavailable** | Notify IT system administrator. Item custody at physical stations continues manually using physical register books until service is restored. |
-| **Gemini AI Service Unavailable** | Staff and students should proceed using manual descriptions. No action is required; the platform automatically falls back. |
-| **Designated Station Closed / Unavailable** | Staff should redirect finders and claimants to the nearest adjacent active station recorded in the platform. |
-| **Disputed / Mismatched Ownership Claim** | **Do not release physical custody.** Custodian rejects claim with an explanatory note. Student may lodge an escalation via `/api/pickup/disputes/`. |
-| **Repeated OTP Failure (Valuable Item)** | The system automatically locks the handover record after 5 failed attempts. Item remains in secure hold until identity is re-verified by an administrator. |
-| **Physical Item Discrepancy** | If an item held in physical custody is damaged or misplaced, custodian logs a status update to `DAMAGED` or `MISSING` in the admin portal. |
+| Incident | Severity | Operational Procedure |
+|---|---|---|
+| **Database Unavailable** | Critical | Check PostgreSQL service status (`systemctl status postgresql`). Verify database credentials, port availability, and connection pool limits. Until restored, physical custody is logged manually on paper registers. |
+| **Application / Website Unavailable** | Critical | Check Gunicorn service (`systemctl status gunicorn`) and Nginx logs (`/var/log/nginx/error.log`). Physical collection desks continue operating via physical intake forms. |
+| **Gemini AI Service Unavailable** | Low | Students and custodians proceed using manual descriptions. The platform automatically catches timeouts/API errors and falls back without interrupting submissions. |
+| **Email Notification Unavailable** | Medium | In-app notifications continue to deliver all critical match alerts and OTP codes directly within the web portal (`/notifications`). Reconnect SMTP relay settings when feasible. |
+| **Media Storage Unavailable / Disk Full** | High | Check storage mount (`df -h`). Image uploads will fail with HTTP 500 until disk space is expanded. Existing records and matching workflows remain functional. |
+| **Designated Station Closed / Unavailable** | Medium | Custodian updates station status to `INACTIVE` in Django Admin. System advises finders and claimants to visit the adjacent designated active station. |
+| **Incorrect Station Data Reported** | Low | Campus administrator edits building, floor, directions, or operational hours directly in Django Admin (`Collection Points`) or updates `campus_stations.json`. |
+| **Suspected Fraudulent Claim** | High | **Do not release physical item.** Custodian rejects claim, adds an internal note documenting reason, and flags account for administrative review. |
+| **Disputed Ownership** | High | **Do not release physical item.** Item remains in `SECURE_HOLD`. Both claimants are directed to the campus Dean of Student Affairs or Central Security with physical proof. |
+| **Lost or Damaged Physical Item in Custody** | High | Custodian updates item status to `MISSING` or `DAMAGED` in admin portal. Log an incident report with timestamp and station location in the audit trail. |
+| **Repeated OTP Failure / Claimant Locked** | Medium | System locks handover record after 5 failed attempts. Custodian verifies student ID physically and escalates to Administrator for manual verification override. |
+| **Unauthorized Access Attempt / Security Report** | Critical | Inspect Django Audit Logs (`/admin/audit/auditlog/`) for IP and user account. Revoke session tokens immediately and rotate compromised credentials. |
 
 ---
 
