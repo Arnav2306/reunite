@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { AlertCircle, ArrowRight, Mail, Phone, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowRight, Mail, Phone, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 
 export const SignupPage: React.FC = () => {
   const { signup } = useAuth();
@@ -13,6 +13,8 @@ export const SignupPage: React.FC = () => {
   const [mobileNumber, setMobileNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -270,18 +272,31 @@ export const SignupPage: React.FC = () => {
               >
                 Password <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1.5">
+              <div className="mt-1.5 relative">
                 <input
                   id="password"
                   name="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-600 focus:border-blue-600 bg-white"
+                  className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-600 focus:border-blue-600 bg-white"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-hidden focus:text-slate-700 cursor-pointer"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
               </div>
             </div>
 
@@ -292,17 +307,30 @@ export const SignupPage: React.FC = () => {
               >
                 Confirm Password <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1.5">
+              <div className="mt-1.5 relative">
                 <input
                   id="confirmPassword"
                   name="confirmPassword"
-                  type="password"
+                  type={showConfirmPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-600 focus:border-blue-600 bg-white"
+                  className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-600 focus:border-blue-600 bg-white"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-hidden focus:text-slate-700 cursor-pointer"
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
               </div>
             </div>
 

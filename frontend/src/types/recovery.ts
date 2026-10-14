@@ -1,14 +1,26 @@
+export interface CampusBlockItem {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+}
+
 export interface CollectionPoint {
   id: number;
   public_id: string;
   station_code: string;
   building: string;
+  block?: number | null;
+  block_details?: CampusBlockItem | null;
+  requires_block_confirmation?: boolean;
   floor: string;
   station_type: string;
-  status: 'ACTIVE' | 'INACTIVE' | string;
+  status: 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED' | string;
   capacity: number;
   current_count: number;
   zone: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
   directions?: string;
   map_link?: string;
   opening_hours?: Record<string, string>;
@@ -23,6 +35,7 @@ export interface CampusConfig {
   locality: string;
   city: string;
   state: string;
+  country?: string;
   pin_code: string;
   contact_email: string;
   contact_phone: string;

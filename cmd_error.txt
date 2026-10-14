@@ -1,0 +1,4 @@
+  File "<string>", line 1
+    print(python ok)
+          ^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?

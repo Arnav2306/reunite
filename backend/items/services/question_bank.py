@@ -971,17 +971,305 @@ CATEGORY_QUESTION_BANK: Dict[str, List[Dict[str, Any]]] = {
             'allow_detail': True,
             'detail_placeholder': 'Describe any distinctive mark'
         }
+    ],
+
+    'Headphones & Earphones': [
+        {
+            'key': 'form_factor',
+            'label': 'Headphone Type / Form Factor',
+            'type': 'choice',
+            'options': [
+                'TWS Wireless Earbuds with Charging Case (AirPods, Galaxy Buds)',
+                'Over-ear / On-ear Headphones (Padded headband)',
+                'Neckband Style In-ear Earphones',
+                'Wired 3.5mm / Type-C Earphones',
+                'Single Wireless Earpiece',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Describe form factor or style'
+        },
+        {
+            'key': 'brand',
+            'label': 'Brand / Manufacturer',
+            'type': 'choice',
+            'options': [
+                'Apple (AirPods / AirPods Pro)',
+                'boAt (Airdopes / Rockerz)',
+                'Sony (WH-1000XM / WF series)',
+                'JBL',
+                'OnePlus (Bullets / Buds)',
+                'Samsung Galaxy Buds',
+                'Noise / Boult / Realme',
+                'Sennheiser / Bose',
+                'Generic / Unbranded',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Brand and model series'
+        },
+        {
+            'key': 'main_color',
+            'label': 'Earphone & Case Color',
+            'type': 'choice',
+            'options': [
+                'White / Glossy White',
+                'Black / Matte Black',
+                'Blue / Navy',
+                'Grey / Silver',
+                'Beige / Rose Gold',
+                'Green / Olive',
+                'Dual-tone / Multi-colored',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Color shade or dual tone'
+        },
+        {
+            'key': 'distinguishing_feature',
+            'label': 'Protective Case, Keychain, or Distinctive Mark',
+            'type': 'choice',
+            'options': [
+                'Silicone protective sleeve on charging case',
+                'Keychain, carabiner, or charm loop attached',
+                'Sticker, tape, or initials on case lid',
+                'Noticeable scratch, scuff, or dent',
+                'One earbud missing (only left or right present)',
+                'Ear hook or custom foam ear-tips installed',
+                'None / Clean original case',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Describe silicone case color, sticker, or mark'
+        }
+    ],
+
+    'Chargers & Cables': [
+        {
+            'key': 'charger_type',
+            'label': 'Type of Charger / Cable',
+            'type': 'choice',
+            'options': [
+                'Laptop Power Brick & Cable (Type-C or barrel pin)',
+                'Smartphone Fast Charger (Wall adapter & USB-C cable)',
+                'iPhone Fast Charger / Lightning / MagSafe Cable',
+                'Multi-port GaN Fast Charger Block',
+                'Charging Cable Only (No wall adapter)',
+                'Power Bank / Portable Battery Pack',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Specify adapter or cable type'
+        },
+        {
+            'key': 'brand',
+            'label': 'Brand / Compatible Brand',
+            'type': 'choice',
+            'options': [
+                'Apple (20W / 30W / 67W / MagSafe)',
+                'Samsung (25W / 45W Fast Charger)',
+                'Dell / HP / Lenovo (Laptop adapter)',
+                'OnePlus / Realme (Warp / Dart charger)',
+                'Xiaomi / Redmi fast charger',
+                'Anker / Ambrane / boAt',
+                'Generic / Unbranded power adapter',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Brand name or power rating'
+        },
+        {
+            'key': 'main_color',
+            'label': 'Adapter & Cable Color',
+            'type': 'choice',
+            'options': [
+                'White (White block & white wire)',
+                'Black (Black block & black wire)',
+                'Braided Grey / Silver cable',
+                'Red / Orange cable (OnePlus style)',
+                'Blue / Colored accent',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Color or braided wire details'
+        },
+        {
+            'key': 'distinguishing_feature',
+            'label': 'Cable Tie, Tape, or Distinctive Mark',
+            'type': 'choice',
+            'options': [
+                'Colored tape or wire marker near connector',
+                'Velcro cable tie or rubber band attached',
+                'Name, initials, or symbol in permanent marker',
+                'Bent charging pin or strain-relief fraying',
+                'Scratch, dent, or sticker on charger body',
+                'None / Clean condition',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Describe tape color, initials, or mark'
+        }
+    ],
+
+    'Vehicle Keys': [
+        {
+            'key': 'vehicle_type',
+            'label': 'What type of vehicle was the key for?',
+            'type': 'choice',
+            'options': [
+                'Motorcycle',
+                'Scooter',
+                'Car',
+                'Other vehicle',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Specify vehicle make or model if known'
+        },
+        {
+            'key': 'key_type',
+            'label': 'What type of key was it?',
+            'type': 'choice',
+            'options': [
+                'Traditional metal key',
+                'Remote key fob',
+                'Smart / proximity key',
+                'Key with integrated remote',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Describe key shape or remote type if Other'
+        },
+        {
+            'key': 'key_appearance',
+            'label': 'What did the key or remote look like?',
+            'type': 'choice',
+            'options': [
+                'Mainly black',
+                'Mainly silver or metallic',
+                'Distinctive coloured buttons or casing',
+                'Other colour',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Describe colour, casing design, or button layout'
+        },
+        {
+            'key': 'distinguishing_feature',
+            'label': 'Was there a distinctive feature?',
+            'type': 'choice',
+            'options': [
+                'Keychain or tag attached',
+                'Multiple keys on the same ring',
+                'Distinctive casing or cover',
+                'Visible logo or marking',
+                'No obvious distinctive feature',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Describe keychain, logo, or any distinctive mark'
+        }
+    ],
+
+    'Helmets & Riding Gear': [
+        {
+            'key': 'helmet_type',
+            'label': 'Helmet Style / Gear Type',
+            'type': 'choice',
+            'options': [
+                'Full-face Helmet with chin bar',
+                'Open-face (3/4th) Helmet with visor',
+                'Modular / Flip-up Helmet',
+                'Half Helmet / Beanie style',
+                'Bicycle / Skate Helmet',
+                'Riding Gloves / Knee Guards / Jacket',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Specific helmet or gear style'
+        },
+        {
+            'key': 'brand',
+            'label': 'Brand',
+            'type': 'choice',
+            'options': [
+                'Vega',
+                'Steelbird',
+                'Studds',
+                'Axor',
+                'SMK',
+                'Royal Enfield',
+                'MT Helmets',
+                'Generic / No prominent logo',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Helmet brand and series'
+        },
+        {
+            'key': 'main_color',
+            'label': 'Primary Color & Finish',
+            'type': 'choice',
+            'options': [
+                'Matte Black',
+                'Glossy Black',
+                'White / Pearl White',
+                'Red / Maroon',
+                'Neon Green / Yellow / High-vis',
+                'Graphic Decals / Racing stripes / Multi-color',
+                'Grey / Titanium',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Color and finish or graphic pattern'
+        },
+        {
+            'key': 'distinguishing_feature',
+            'label': 'Visor Tint, Stickers, or Distinguishing Mark',
+            'type': 'choice',
+            'options': [
+                'Smoked / Black-tinted sun visor installed',
+                'Clear transparent visor',
+                'Rainbow / Mercury reflective mirror visor',
+                'Action camera mount or intercom / mic attached',
+                'Stickers, club logos, or blood group decal on shell',
+                'Deep scratch, paint chip, or scuff mark',
+                'None / Clean pristine condition',
+                'Other',
+                'Not sure'
+            ],
+            'allow_detail': True,
+            'detail_placeholder': 'Describe sticker, visor type, or scratch location'
+        }
     ]
 }
 
 # Category name normalization map (aliases to canonical key in CATEGORY_QUESTION_BANK)
 CATEGORY_ALIASES: Dict[str, str] = {
     'phone': 'Phone',
+    'phones': 'Phone',
     'smartphone': 'Phone',
+    'smartphones': 'Phone',
     'mobile': 'Phone',
     'cellphone': 'Phone',
     'iphone': 'Phone',
     'laptop': 'Laptop',
+    'laptops': 'Laptop',
     'notebook': 'Laptop',
     'macbook': 'Laptop',
     'computer': 'Laptop',
@@ -1001,11 +1289,44 @@ CATEGORY_ALIASES: Dict[str, str] = {
     'keys & badges': 'Keys & Badges',
     'keychain': 'Keys & Badges',
     'badge': 'Keys & Badges',
+    # Vehicle Keys aliases — must resolve before the generic 'key'/'keys' fallback
+    'vehicle keys': 'Vehicle Keys',
+    'vehicle key': 'Vehicle Keys',
+    'vehicle_keys': 'Vehicle Keys',
+    'motorcycle key': 'Vehicle Keys',
+    'motorbike key': 'Vehicle Keys',
+    'scooter key': 'Vehicle Keys',
+    'car key': 'Vehicle Keys',
+    'car keys': 'Vehicle Keys',
+    'bike key': 'Vehicle Keys',
+    'key fob': 'Vehicle Keys',
+    'key fobs': 'Vehicle Keys',
+    'remote key': 'Vehicle Keys',
+    'smart key': 'Vehicle Keys',
+    'proximity key': 'Vehicle Keys',
     'bottle': 'Bottles & Containers',
     'bottles': 'Bottles & Containers',
     'bottles & containers': 'Bottles & Containers',
     'water bottle': 'Bottles & Containers',
     'flask': 'Bottles & Containers',
+    'headphones': 'Headphones & Earphones',
+    'headphone': 'Headphones & Earphones',
+    'earphones': 'Headphones & Earphones',
+    'earphone': 'Headphones & Earphones',
+    'earbuds': 'Headphones & Earphones',
+    'airpods': 'Headphones & Earphones',
+    'headphones & earphones': 'Headphones & Earphones',
+    'chargers': 'Chargers & Cables',
+    'charger': 'Chargers & Cables',
+    'adapter': 'Chargers & Cables',
+    'cables': 'Chargers & Cables',
+    'cable': 'Chargers & Cables',
+    'chargers & cables': 'Chargers & Cables',
+    'chargers & adapters': 'Chargers & Cables',
+    'helmets': 'Helmets & Riding Gear',
+    'helmet': 'Helmets & Riding Gear',
+    'riding gear': 'Helmets & Riding Gear',
+    'helmets & riding gear': 'Helmets & Riding Gear',
     'electronics': 'Electronics',
     'other electronics': 'Electronics',
     'gadget': 'Electronics',
@@ -1034,17 +1355,37 @@ CATEGORY_ALIASES: Dict[str, str] = {
     'general': 'Other',
 }
 
+
 def resolve_category_key(category_name: str) -> str:
-    """Resolves a category string (case-insensitive) to its canonical key."""
+    """Resolves a category string (case-insensitive) to its canonical key.
+
+    Vehicle Keys aliases are checked explicitly before falling back to
+    generic 'key'/'keys' aliases to prevent mis-classification.
+    """
     if not category_name:
         return 'Other'
     normalized = category_name.strip().lower()
+
+    # 1. Exact alias match (highest priority — O(1) lookup)
     if normalized in CATEGORY_ALIASES:
         return CATEGORY_ALIASES[normalized]
-    # Check substring containment
+
+    # 2. Explicit Vehicle Keys terms — must be checked BEFORE generic 'key' substring matching
+    vehicle_key_terms = {
+        'vehicle keys', 'vehicle key', 'vehicle_keys',
+        'motorcycle key', 'motorbike key', 'scooter key',
+        'car key', 'car keys', 'bike key', 'key fob', 'key fobs',
+        'remote key', 'smart key', 'proximity key',
+    }
+    for vk_term in vehicle_key_terms:
+        if vk_term in normalized or normalized in vk_term:
+            return 'Vehicle Keys'
+
+    # 3. General substring containment (fallback)
     for alias, canonical in CATEGORY_ALIASES.items():
         if alias in normalized or normalized in alias:
             return canonical
+
     return 'Other'
 
 def get_category_questions(category_name: str) -> List[Dict[str, Any]]:

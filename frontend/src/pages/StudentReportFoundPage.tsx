@@ -1,22 +1,35 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, apiRequest, ApiError } from '../services/api';
 import {
   Camera, Upload, X, Loader2, CheckCircle2, AlertCircle,
   ArrowLeft, ArrowRight, MapPin, Edit3, ChevronDown,
-  Info, Package
+  Info, Package, Navigation, Compass
 } from 'lucide-react';
+
+interface CampusBlockItem {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+}
 
 interface CollectionPoint {
   id: number;
   public_id: string;
   station_code: string;
   building: string;
+  block?: number | null;
+  block_details?: CampusBlockItem | null;
+  requires_block_confirmation?: boolean;
   floor: string;
   station_type: string;
   status: string;
   zone: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  distanceMeters?: number;
 }
 
 interface AISuggestion {
@@ -29,10 +42,12 @@ interface AISuggestion {
   safe_description?: string;
   risk_tier?: number;
   confidence?: string;
+  provider?: string;
 }
 
 interface AIAnalysisResult {
   available: boolean;
+  provider?: string;
   detail: string;
   suggestion: AISuggestion | null;
 }
@@ -42,6 +57,10 @@ const CATEGORIES = [
   'Bottles & Containers',
   'Stationery & Books',
   'Keys & Badges',
+  'Vehicle Keys',
+  'Headphones & Earphones',
+  'Chargers & Cables',
+  'Helmets & Riding Gear',
   'Clothing & Accessories',
   'Wallet & Cards',
   'Bags & Luggage',
@@ -50,6 +69,21 @@ const CATEGORIES = [
   'Documents & ID',
   'Other',
 ];
+
+// Haversine distance in meters
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3;
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+            Math.cos(phi1) * Math.cos(phi2) *
+            Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 // Steps: 0=Photo, 1=AI Analysis, 2=Review & Correct, 3=Station, 4=Confirm
 const STEPS = [
@@ -74,6 +108,10 @@ export const StudentReportFoundPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // Concurrency & dedup guard
+  const analysisSeqRef = useRef<number>(0);
+  const lastAnalyzedHashRef = useRef<string>('');
+
   // --- Step 1: AI ---
   const [aiResult, setAiResult] = useState<AIAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -90,17 +128,21 @@ export const StudentReportFoundPage: React.FC = () => {
   // Track which fields were AI-suggested vs user-edited
   const [aiSuggestedFields, setAiSuggestedFields] = useState<Set<string>>(new Set());
 
-  // --- Step 3: Station & Cannot-Carry Mode ---
+  // --- Step 3: Station & Geolocation Recommendation ---
   const [collectionPointId, setCollectionPointId] = useState('');
   const [cannotCarry, setCannotCarry] = useState(false);
   const [cannotCarryDetails, setCannotCarryDetails] = useState('');
+  const [selectedBlockFilter, setSelectedBlockFilter] = useState('');
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'granted' | 'denied' | 'no_coords'>('idle');
+  const [geoMessage, setGeoMessage] = useState<string | null>(null);
 
   // --- Submission ---
   const [formError, setFormError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
 
   // Load collection points
-  const { data: collectionPoints = [] } = useQuery<CollectionPoint[]>({
+  const { data: rawCollectionPoints = [] } = useQuery<CollectionPoint[]>({
     queryKey: ['collection-points'],
     queryFn: async () => {
       const res = await api.get<CollectionPoint[] | { results: CollectionPoint[] }>('/api/collection-points/');
@@ -108,26 +150,115 @@ export const StudentReportFoundPage: React.FC = () => {
     },
   });
 
+  // Load campus blocks
+  const { data: campusBlocks = [] } = useQuery<CampusBlockItem[]>({
+    queryKey: ['campus-blocks'],
+    queryFn: async () => {
+      try {
+        const res = await api.get<CampusBlockItem[] | { results: CampusBlockItem[] }>('/api/collection-points/blocks/');
+        return Array.isArray(res) ? res : (res as { results: CampusBlockItem[] }).results || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
   // Pre-select station if provided in URL parameter (e.g. from QR scan)
   useEffect(() => {
-    if (stationParam && collectionPoints.length > 0) {
-      const match = collectionPoints.find(
+    if (stationParam && rawCollectionPoints.length > 0) {
+      const match = rawCollectionPoints.find(
         cp => cp.station_code.toLowerCase() === stationParam.toLowerCase() || String(cp.id) === stationParam
       );
-      if (match) {
+      if (match && match.status === 'ACTIVE') {
         setCollectionPointId(String(match.id));
       }
     }
-  }, [stationParam, collectionPoints]);
+  }, [stationParam, rawCollectionPoints]);
 
-  // Handle image selection
-  const handleImageSelect = (file: File) => {
-    setImageFile(file);
+  // Automatic AI analysis trigger
+  const runAIAnalysis = useCallback(async (file: File) => {
+    const fileHash = `${file.name}-${file.size}-${file.lastModified}`;
+    if (lastAnalyzedHashRef.current === fileHash && aiResult?.available) {
+      return;
+    }
+
+    const currentSeq = ++analysisSeqRef.current;
+    setIsAnalyzing(true);
     setAiResult(null);
     setAiSkipped(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const result = await apiRequest<AIAnalysisResult>('/api/items/analyze-image/', {
+        method: 'POST',
+        body: formData,
+        headers: {},
+      });
+
+      if (currentSeq !== analysisSeqRef.current) return;
+
+      lastAnalyzedHashRef.current = fileHash;
+      setAiResult(result);
+
+      if (result.available && result.suggestion) {
+        const s = result.suggestion;
+        const suggestedFields = new Set<string>();
+
+        // Preserve manually edited fields; only populate empty or previously AI-suggested fields
+        if (s.suggested_title && (!title.trim() || aiSuggestedFields.has('title'))) {
+          setTitle(s.suggested_title);
+          suggestedFields.add('title');
+        }
+        if (s.suggested_category && (!category || aiSuggestedFields.has('category'))) {
+          const sugCatLower = (s.suggested_category || '').toLowerCase();
+          // Specific vehicle key terms must map to Vehicle Keys, not generic Keys & Badges
+          const vehicleKeyTerms = ['vehicle key', 'vehicle keys', 'car key', 'motorcycle key', 'scooter key', 'key fob', 'remote key', 'smart key', 'proximity key'];
+          const isVehicleKey = vehicleKeyTerms.some(t => sugCatLower.includes(t));
+          let matched: string | undefined;
+          if (isVehicleKey) {
+            matched = 'Vehicle Keys';
+          } else {
+            matched = CATEGORIES.find(c =>
+              c.toLowerCase().includes(sugCatLower) ||
+              sugCatLower.includes(c.toLowerCase().split(' ')[0])
+            );
+          }
+          if (matched) { setCategory(matched); suggestedFields.add('category'); }
+        }
+        if (s.safe_description && (!description.trim() || aiSuggestedFields.has('description'))) {
+          setDescription(s.safe_description);
+          suggestedFields.add('description');
+        }
+        if (s.risk_tier !== undefined) {
+          setRiskTier(s.risk_tier);
+          suggestedFields.add('riskTier');
+        }
+        setAiSuggestedFields(suggestedFields);
+      }
+    } catch (err) {
+      if (currentSeq !== analysisSeqRef.current) return;
+      setAiResult({
+        available: false,
+        detail: err instanceof Error ? err.message : 'Analysis failed. Please describe the item manually.',
+        suggestion: null,
+      });
+    } finally {
+      if (currentSeq === analysisSeqRef.current) {
+        setIsAnalyzing(false);
+      }
+    }
+  }, [aiResult]);
+
+  // Handle image selection — immediately trigger automatic AI analysis
+  const handleImageSelect = (file: File) => {
+    setImageFile(file);
     const reader = new FileReader();
     reader.onload = (e) => setImagePreview(e.target?.result as string);
     reader.readAsDataURL(file);
+
+    setStep(1);
+    runAIAnalysis(file);
   };
 
   const handleFileDrop = (e: React.DragEvent) => {
@@ -141,48 +272,85 @@ export const StudentReportFoundPage: React.FC = () => {
     if (file) handleImageSelect(file);
   };
 
-  // AI analysis
-  const handleAnalyzeImage = async () => {
-    if (!imageFile) return;
-    setIsAnalyzing(true);
-    setAiResult(null);
-    try {
-      const formData = new FormData();
-      formData.append('image', imageFile);
-      const result = await apiRequest<AIAnalysisResult>('/api/items/analyze-image/', {
-        method: 'POST',
-        body: formData,
-        headers: {},
-      });
-      setAiResult(result);
-
-      // Auto-populate form fields from AI suggestion
-      if (result.available && result.suggestion) {
-        const s = result.suggestion;
-        const suggestedFields = new Set<string>();
-
-        if (s.suggested_title) { setTitle(s.suggested_title); suggestedFields.add('title'); }
-        if (s.suggested_category) {
-          const matched = CATEGORIES.find(c =>
-            c.toLowerCase().includes((s.suggested_category || '').toLowerCase()) ||
-            (s.suggested_category || '').toLowerCase().includes(c.toLowerCase().split(' ')[0])
-          );
-          if (matched) { setCategory(matched); suggestedFields.add('category'); }
-        }
-        if (s.safe_description) { setDescription(s.safe_description); suggestedFields.add('description'); }
-        if (s.risk_tier !== undefined) { setRiskTier(s.risk_tier); suggestedFields.add('riskTier'); }
-        setAiSuggestedFields(suggestedFields);
-      }
-    } catch (err) {
-      setAiResult({
-        available: false,
-        detail: err instanceof Error ? err.message : 'Analysis failed.',
-        suggestion: null,
-      });
-    } finally {
-      setIsAnalyzing(false);
+  const handleRetryAI = () => {
+    if (imageFile) {
+      lastAnalyzedHashRef.current = '';
+      runAIAnalysis(imageFile);
     }
   };
+
+  // Browser Geolocation handler for nearest station recommendation
+  const handleRequestGeolocation = () => {
+    if (!('geolocation' in navigator)) {
+      setGeoStatus('no_coords');
+      setGeoMessage('Browser geolocation is not supported on this device.');
+      return;
+    }
+
+    setGeoStatus('locating');
+    setGeoMessage('Requesting your current campus position…');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setUserCoords({ lat, lng });
+
+        const stationsWithCoords = rawCollectionPoints.filter(
+          cp => cp.latitude != null && cp.longitude != null && !isNaN(Number(cp.latitude)) && !isNaN(Number(cp.longitude))
+        );
+        if (stationsWithCoords.length > 0) {
+          setGeoStatus('granted');
+          setGeoMessage('Calculated distance to nearby collection stations.');
+        } else {
+          setGeoStatus('no_coords');
+          setGeoMessage(
+            'Campus station GPS coordinates are not yet configured. Please select your building/block below to view on-site stations.'
+          );
+        }
+      },
+      (err) => {
+        setGeoStatus('denied');
+        if (err.code === err.PERMISSION_DENIED) {
+          setGeoMessage('Location permission denied. You can select your building/block manually below.');
+        } else {
+          setGeoMessage('Unable to retrieve location. Please select your building/block manually.');
+        }
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
+  // Compute station list with distances and filter
+  const processedStations = useMemo(() => {
+    return rawCollectionPoints.map(cp => {
+      let distanceMeters: number | undefined;
+      if (userCoords && cp.latitude != null && cp.longitude != null) {
+        const lat = Number(cp.latitude);
+        const lon = Number(cp.longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          distanceMeters = calculateDistanceMeters(userCoords.lat, userCoords.lng, lat, lon);
+        }
+      }
+      return { ...cp, distanceMeters };
+    }).sort((a, b) => {
+      if (a.distanceMeters !== undefined && b.distanceMeters !== undefined) {
+        return a.distanceMeters - b.distanceMeters;
+      }
+      if (a.distanceMeters !== undefined) return -1;
+      if (b.distanceMeters !== undefined) return 1;
+      return a.station_code.localeCompare(b.station_code);
+    });
+  }, [rawCollectionPoints, userCoords]);
+
+  const filteredStations = useMemo(() => {
+    if (!selectedBlockFilter) return processedStations;
+    return processedStations.filter(cp => {
+      if (cp.block && String(cp.block) === selectedBlockFilter) return true;
+      if (cp.block_details && String(cp.block_details.id) === selectedBlockFilter) return true;
+      return false;
+    });
+  }, [processedStations, selectedBlockFilter]);
 
   const handleSkipAI = () => {
     setAiSkipped(true);
@@ -257,7 +425,7 @@ export const StudentReportFoundPage: React.FC = () => {
     setStep(s => s - 1);
   };
 
-  const selectedStation = collectionPoints.find(cp => String(cp.id) === collectionPointId);
+  const selectedStation = rawCollectionPoints.find(cp => String(cp.id) === collectionPointId);
 
   // ─── Success Screen ──────────────────────────────────────────────────────
   if (successId) {
@@ -461,7 +629,7 @@ export const StudentReportFoundPage: React.FC = () => {
           {!aiResult && !isAnalyzing && (
             <button
               type="button"
-              onClick={handleAnalyzeImage}
+              onClick={handleRetryAI}
               className="w-full py-3.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
             >
               <Package className="w-4 h-4" />
@@ -471,10 +639,10 @@ export const StudentReportFoundPage: React.FC = () => {
 
           {/* Loading state */}
           {isAnalyzing && (
-            <div className="flex flex-col items-center justify-center py-8 space-y-3">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-              <p className="text-sm font-medium text-slate-700">AI is analyzing your photo…</p>
-              <p className="text-xs text-slate-500">This usually takes a few seconds</p>
+            <div className="flex flex-col items-center justify-center py-10 space-y-3 bg-blue-50/50 rounded-xl border border-blue-100">
+              <Loader2 className="w-9 h-9 animate-spin text-blue-600" />
+              <p className="text-sm font-semibold text-slate-800">Analyzing image…</p>
+              <p className="text-xs text-slate-500">Extracting color, brand, and item attributes automatically</p>
             </div>
           )}
 
@@ -489,7 +657,9 @@ export const StudentReportFoundPage: React.FC = () => {
                 <>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-teal-600" />
-                    <p className="text-sm font-semibold text-teal-800">Here's what Reunite detected</p>
+                    <p className="text-sm font-semibold text-teal-800">
+                      Here's what Reunite detected {aiResult.provider ? `(${aiResult.provider})` : ''}
+                    </p>
                     {aiResult.suggestion.confidence && (
                       <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-semibold ${
                         aiResult.suggestion.confidence === 'high'
@@ -539,15 +709,22 @@ export const StudentReportFoundPage: React.FC = () => {
                   <p className="text-xs text-teal-700 italic pt-1 border-t border-teal-200">
                     You can review and correct these details in the next step.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setStep(2)}
+                    className="w-full mt-2 py-2.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    Review & Correct Details <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </>
               ) : (
                 <>
                   <p className="text-sm font-semibold text-amber-800">AI analysis unavailable</p>
-                  <p className="text-sm text-amber-700">{aiResult.detail || 'AI analysis is currently unavailable. Your report has been saved and can still be reviewed.'}</p>
+                  <p className="text-sm text-amber-700">{aiResult.detail || 'AI vision service did not respond. Your photo is saved and you can describe the item manually.'}</p>
                   <div className="pt-2 flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      onClick={handleAnalyzeImage}
+                      onClick={handleRetryAI}
                       className="px-3.5 py-1.5 text-xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg transition-colors"
                     >
                       Retry AI Analysis
@@ -557,7 +734,7 @@ export const StudentReportFoundPage: React.FC = () => {
                       onClick={() => setStep(2)}
                       className="px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg transition-colors"
                     >
-                      Continue to Manual Review →
+                      Continue with Manual Description →
                     </button>
                   </div>
                 </>
@@ -768,57 +945,157 @@ export const StudentReportFoundPage: React.FC = () => {
           </div>
 
           {!cannotCarry && (
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Available Campus Stations</p>
-              {collectionPoints.length === 0 ? (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
-                  <p className="text-sm text-slate-500">No collection stations found.</p>
-                  <p className="text-xs text-slate-400 mt-1">You can skip this step and our team will contact you.</p>
+            <div className="space-y-4">
+              {/* Geolocation Nearest Station Finder */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Navigation className="w-3.5 h-3.5 text-blue-600" /> Nearest Campus Station
+                    </span>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Find the closest drop-off station using your current campus location.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRequestGeolocation}
+                    disabled={geoStatus === 'locating'}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors shrink-0 disabled:opacity-50"
+                  >
+                    {geoStatus === 'locating' ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Locating…</>
+                    ) : (
+                      <><Compass className="w-3.5 h-3.5" /> Find Nearby Stations</>
+                    )}
+                  </button>
+                </div>
+
+                {geoMessage && (
+                  <div className={`text-xs p-2.5 rounded-lg border flex items-start gap-2 ${
+                    geoStatus === 'granted'
+                      ? 'bg-teal-50 border-teal-200 text-teal-800'
+                      : geoStatus === 'no_coords' || geoStatus === 'denied'
+                      ? 'bg-amber-50 border-amber-200 text-amber-800'
+                      : 'bg-blue-50 border-blue-200 text-blue-800'
+                  }`}>
+                    <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{geoMessage}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Campus Block filter */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Campus Drop-off Desks ({filteredStations.length})
+                </p>
+                {campusBlocks.length > 0 && (
+                  <div className="relative min-w-56">
+                    <select
+                      value={selectedBlockFilter}
+                      onChange={(e) => setSelectedBlockFilter(e.target.value)}
+                      className="w-full appearance-none px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white pr-7 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="">All Campus Blocks ({campusBlocks.length})</option>
+                      {campusBlocks.map(b => (
+                        <option key={b.id} value={String(b.id)}>
+                          {b.code} — {b.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-2 text-slate-400 pointer-events-none" />
+                  </div>
+                )}
+              </div>
+
+              {filteredStations.length === 0 ? (
+                <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-1">
+                  <p className="text-sm font-semibold text-slate-600">No stations match the selected block.</p>
+                  <p className="text-xs text-slate-400">Try resetting the filter to show all university stations.</p>
+                  {selectedBlockFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBlockFilter('')}
+                      className="mt-2 text-xs text-blue-600 hover:underline font-semibold"
+                    >
+                      Clear block filter
+                    </button>
+                  )}
                 </div>
               ) : (
-            <div className="space-y-2.5">
-              {collectionPoints.filter(cp => cp.status === 'ACTIVE' || !cp.status).map(cp => (
-                <button
-                  key={cp.id}
-                  type="button"
-                  onClick={() => setCollectionPointId(collectionPointId === String(cp.id) ? '' : String(cp.id))}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-                    collectionPointId === String(cp.id)
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <MapPin className={`w-4 h-4 ${collectionPointId === String(cp.id) ? 'text-blue-600' : 'text-slate-400'}`} />
-                        <span className={`text-sm font-semibold ${collectionPointId === String(cp.id) ? 'text-blue-900' : 'text-slate-800'}`}>
-                          {cp.building}
-                        </span>
-                        {cp.floor && (
-                          <span className="text-xs text-slate-500">— {cp.floor}</span>
-                        )}
-                      </div>
-                      <p className={`text-xs mt-1 ml-6 ${collectionPointId === String(cp.id) ? 'text-blue-600' : 'text-slate-500'}`}>
-                        Station: {cp.station_code}
-                      </p>
-                    </div>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
-                      collectionPointId === String(cp.id)
-                        ? 'border-blue-500 bg-blue-500'
-                        : 'border-slate-300'
-                    }`}>
-                      {collectionPointId === String(cp.id) && (
-                        <div className="w-2 h-2 rounded-full bg-white" />
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-              </div>
-            )}
-          </div>
-        )}
+                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                  {filteredStations.map(cp => {
+                    const isActive = cp.status === 'ACTIVE' || !cp.status;
+                    const isSelected = collectionPointId === String(cp.id);
+
+                    return (
+                      <button
+                        key={cp.id}
+                        type="button"
+                        disabled={!isActive}
+                        onClick={() => {
+                          if (isActive) {
+                            setCollectionPointId(isSelected ? '' : String(cp.id));
+                          }
+                        }}
+                        className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                          !isActive
+                            ? 'opacity-60 bg-slate-50 border-dashed border-slate-200 cursor-not-allowed'
+                            : isSelected
+                            ? 'border-blue-500 bg-blue-50 shadow-xs'
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <MapPin className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
+                              <span className={`text-sm font-semibold ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                                {cp.building}
+                              </span>
+                              {cp.block_details && (
+                                <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium border border-slate-200">
+                                  {cp.block_details.code}
+                                </span>
+                              )}
+                              {cp.distanceMeters !== undefined && (
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">
+                                  ~{Math.round(cp.distanceMeters)}m away
+                                </span>
+                              )}
+                            </div>
+
+                            <p className={`text-xs ml-6 ${isSelected ? 'text-blue-700' : 'text-slate-500'}`}>
+                              Station Code: <span className="font-mono">{cp.station_code}</span>
+                              {cp.floor ? ` • Floor: ${cp.floor}` : ''}
+                              {cp.zone ? ` • Zone: ${cp.zone}` : ''}
+                            </p>
+
+                            {!isActive && (
+                              <p className="text-xs ml-6 text-amber-700 font-semibold">
+                                Pending Verification / Offline — Deposits disabled
+                              </p>
+                            )}
+                          </div>
+
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-500'
+                              : 'border-slate-300'
+                          }`}>
+                            {isSelected && (
+                              <div className="w-2 h-2 rounded-full bg-white" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="p-3.5 bg-amber-50 border border-amber-100 rounded-xl">
             <p className="text-xs text-amber-700">

@@ -43,7 +43,9 @@ ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS_ENV.split(',') if h.strip()] o
 # Set GEMINI_API_KEY environment variable to enable AI image analysis.
 # If not set, the AI analysis endpoint returns a safe fallback response.
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-3.8-flash')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
 
 # ─────────────────────────────────────────────
 # Application definition
@@ -97,7 +99,7 @@ MIDDLEWARE = [
 ]
 
 # ─────────────────────────────────────────────
-# CORS — configure for production deployment
+# CORS & CSRF — configure for production deployment
 # ─────────────────────────────────────────────
 # In development, Vite proxy handles CORS transparently.
 # In production, set CORS_ALLOWED_ORIGINS to the deployed frontend URL.
@@ -108,6 +110,13 @@ if _cors_origins_env:
 else:
     # In DEBUG mode, allow all origins for local development convenience
     CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+_csrf_origins_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+if _csrf_origins_env:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins_env.split(',') if o.strip()]
+elif CORS_ALLOWED_ORIGINS if '_cors_origins_env' in locals() and _cors_origins_env else False:
+    CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+
 
 ROOT_URLCONF = 'reunite_backend.urls'
 
@@ -211,3 +220,10 @@ EMAIL_BACKEND = os.environ.get(
     'EMAIL_BACKEND',
     'django.core.mail.backends.console.EmailBackend'
 )
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Reunite Lost & Found <noreply@reunite.edu>')
+

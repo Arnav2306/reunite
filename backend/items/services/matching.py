@@ -159,7 +159,7 @@ def calculate_match_score(lost_item: LostItem, found_item: FoundItem) -> tuple[i
 
     # 5. Distinguishing Features Signal (0.0 to 1.0)
     distinguishing_text = ''
-    for feat_key in ('distinctive_mark', 'mark', 'extra', 'label', 'content'):
+    for feat_key in ('distinguishing_feature', 'distinctive_mark', 'mark', 'extra', 'label', 'content'):
         if feat_key in lost_attrs and lost_attrs[feat_key]:
             distinguishing_text += f" {lost_attrs[feat_key]}"
         elif feat_key in orig_answers and orig_answers[feat_key]:

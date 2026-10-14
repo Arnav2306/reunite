@@ -1,0 +1,334 @@
+{
+  "campus": {
+    "name": "Medicaps University",
+    "address": "A.B. Road, Pigdamber, Rau, Indore, Madhya Pradesh – 453331, India",
+    "locality": "Pigdamber, Rau",
+    "city": "Indore",
+    "state": "Madhya Pradesh",
+    "country": "India",
+    "pin_code": "453331",
+    "contact_email": "",
+    "contact_phone": "",
+    "website": "",
+    "maps_link": ""
+  },
+  "blocks": [
+    {
+      "code": "BLOCK-A",
+      "name": "Block A",
+      "description": "Admin Block"
+    },
+    {
+      "code": "BLOCK-B",
+      "name": "Block B",
+      "description": "EC/IT/Commerce"
+    },
+    {
+      "code": "BLOCK-C",
+      "name": "Block C",
+      "description": "Computer Center"
+    },
+    {
+      "code": "BLOCK-D",
+      "name": "Block D",
+      "description": "Auto/Machine Lab"
+    },
+    {
+      "code": "BLOCK-E",
+      "name": "Block E",
+      "description": "Workshop"
+    },
+    {
+      "code": "BLOCK-F",
+      "name": "Block F",
+      "description": "Civil/ME/FS"
+    },
+    {
+      "code": "BLOCK-G",
+      "name": "Block G",
+      "description": "Central Library"
+    },
+    {
+      "code": "BLOCK-H",
+      "name": "Block H",
+      "description": "Main Canteen / Yoga Room"
+    },
+    {
+      "code": "BLOCK-I",
+      "name": "Block I",
+      "description": "Admission & Placement Incubation Center"
+    },
+    {
+      "code": "BLOCK-L",
+      "name": "Block L",
+      "description": "CKD / Boys Hostel"
+    },
+    {
+      "code": "BLOCK-M",
+      "name": "Block M",
+      "description": "Management (Business Analytics)"
+    },
+    {
+      "code": "BLOCK-N",
+      "name": "Block N",
+      "description": "Science Block / Computer Applications"
+    },
+    {
+      "code": "BLOCK-O",
+      "name": "Block O",
+      "description": "Agriculture / Workshop"
+    },
+    {
+      "code": "BLOCK-P",
+      "name": "Block P",
+      "description": "Pharmacy"
+    },
+    {
+      "code": "BLOCK-Q",
+      "name": "Block Q",
+      "description": "Management"
+    },
+    {
+      "code": "BLOCK-S",
+      "name": "Block S",
+      "description": "I Year Block"
+    },
+    {
+      "code": "BLOCK-T",
+      "name": "Block T",
+      "description": "Girls Hostel"
+    },
+    {
+      "code": "BLOCK-U",
+      "name": "Block U",
+      "description": "New Girls Hostel"
+    },
+    {
+      "code": "BLOCK-V1",
+      "name": "Block V1",
+      "description": "CSE"
+    },
+    {
+      "code": "BLOCK-V2",
+      "name": "Block V2",
+      "description": "CSE"
+    },
+    {
+      "code": "BLOCK-V3",
+      "name": "Block V3",
+      "description": "CSE"
+    },
+    {
+      "code": "BLOCK-V4",
+      "name": "Block V4",
+      "description": "CSE"
+    },
+    {
+      "code": "BLOCK-V5",
+      "name": "Block V5",
+      "description": "CSE"
+    },
+    {
+      "code": "BLOCK-Z",
+      "name": "Block Z",
+      "description": "Faculty of Law"
+    }
+  ],
+  "stations": [
+    {
+      "code": "MED-ADM-REC",
+      "name": "Admission Cell Station Reception",
+      "building": "Admission Cell Reception",
+      "block_code": null,
+      "requires_block_confirmation": true,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-B000",
+      "name": "B Block Station B 000",
+      "building": "Block B — EC/IT/Commerce",
+      "block_code": "BLOCK-B",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-D000",
+      "name": "D Block Station D 000",
+      "building": "Block D — Auto/Machine Lab",
+      "block_code": "BLOCK-D",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-E000",
+      "name": "E Block Station E 000",
+      "building": "Block E — Workshop",
+      "block_code": "BLOCK-E",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-F000",
+      "name": "F Block Station F 000",
+      "building": "Block F — Civil/ME/FS",
+      "block_code": "BLOCK-F",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-LIB-G",
+      "name": "Central Library",
+      "building": "Block G — Central Library",
+      "block_code": "BLOCK-G",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-CAN-H",
+      "name": "Canteen",
+      "building": "Block H — Main Canteen / Yoga Room",
+      "block_code": "BLOCK-H",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-HSTL-BOYS",
+      "name": "Boys Hostel",
+      "building": "Block L — CKD / Boys Hostel",
+      "block_code": "BLOCK-L",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-M000",
+      "name": "M Block M 000",
+      "building": "Block M — Management (Business Analytics)",
+      "block_code": "BLOCK-M",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-N000",
+      "name": "N Block N 000",
+      "building": "Block N — Science Block / Computer Applications",
+      "block_code": "BLOCK-N",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-O000",
+      "name": "O Block O 000",
+      "building": "Block O — Agriculture / Workshop",
+      "block_code": "BLOCK-O",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-P000",
+      "name": "P Block P 000",
+      "building": "Block P — Pharmacy",
+      "block_code": "BLOCK-P",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-Q000",
+      "name": "Q Block Q 000",
+      "building": "Block Q — Management",
+      "block_code": "BLOCK-Q",
+      "requires_block_confirmation": false,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-HSTL-GIRLS",
+      "name": "Girls Hostel",
+      "building": "Girls Hostel (Block T or U pending confirmation)",
+      "block_code": null,
+      "requires_block_confirmation": true,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    },
+    {
+      "code": "MED-BLK-V015",
+      "name": "V Block Station - V015",
+      "building": "V Block (V1-V5 pending confirmation)",
+      "block_code": null,
+      "requires_block_confirmation": true,
+      "status": "UNVERIFIED",
+      "floor": "",
+      "capacity": 50,
+      "directions": "",
+      "map_link": "",
+      "opening_hours": {}
+    }
+  ]
+}

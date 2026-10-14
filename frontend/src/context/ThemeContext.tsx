@@ -19,12 +19,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const stored = localStorage.getItem('reunite-theme') as Theme;
       if (stored === 'dark' || stored === 'light') return stored;
-      // Respect system preference as default
-      if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark';
     } catch {
       // localStorage unavailable
     }
+    // Strict requirement: Light mode is the default for first-time visitors
     return 'light';
+
   });
 
   useEffect(() => {

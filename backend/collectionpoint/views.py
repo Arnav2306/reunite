@@ -36,8 +36,23 @@ class CollectionPointViewSet(viewsets.ModelViewSet):
 
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
-from .models import CampusConfig
-from .serializers import CampusConfigSerializer
+from .models import CampusConfig, CampusBlock
+from .serializers import CampusConfigSerializer, CampusBlockSerializer
+
+class CampusBlockViewSet(viewsets.ModelViewSet):
+    """
+    CRUD management of official campus blocks and buildings.
+    GET: Open to all users (students, staff, public) to list official blocks.
+    POST/PUT/PATCH/DELETE: Restricted to staff/admin.
+    """
+    queryset = CampusBlock.objects.all().order_by('code')
+    serializer_class = CampusBlockSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsStaff()]
+        return [AllowAny()]
+
 
 class CampusConfigView(APIView):
     """
@@ -65,3 +80,4 @@ class CampusConfigView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+

@@ -117,6 +117,7 @@ export const AvailableItemsPage: React.FC = () => {
             <option value="Bottles & Containers">Bottles & Containers</option>
             <option value="Stationery & Books">Stationery & Books</option>
             <option value="Keys & Badges">Keys & Badges</option>
+            <option value="Vehicle Keys">Vehicle Keys</option>
             <option value="Clothing & Accessories">Clothing & Accessories</option>
             <option value="Wallet & Cards">Wallet & Cards</option>
             <option value="Bags & Luggage">Bags & Luggage</option>

@@ -1,10 +1,31 @@
 from rest_framework import serializers
 import uuid
-from .models import CollectionPoint, CampusConfig
+from .models import CollectionPoint, CampusConfig, CampusBlock
+
+class CampusBlockSerializer(serializers.ModelSerializer):
+    stations_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CampusBlock
+        fields = [
+            'id',
+            'code',
+            'name',
+            'description',
+            'stations_count',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_stations_count(self, obj):
+        return obj.stations.count()
+
 
 class CollectionPointSerializer(serializers.ModelSerializer):
     backup_station_details = serializers.SerializerMethodField()
     current_count = serializers.SerializerMethodField()
+    block_details = CampusBlockSerializer(source='block', read_only=True)
 
     class Meta:
         model = CollectionPoint
@@ -13,6 +34,9 @@ class CollectionPointSerializer(serializers.ModelSerializer):
             'public_id',
             'station_code',
             'building',
+            'block',
+            'block_details',
+            'requires_block_confirmation',
             'floor',
             'station_type',
             'status',
@@ -22,6 +46,8 @@ class CollectionPointSerializer(serializers.ModelSerializer):
             'opening_hours',
             'directions',
             'map_link',
+            'latitude',
+            'longitude',
             'backup_station',
             'backup_station_details',
             'created_at',
@@ -55,6 +81,8 @@ class CollectionPointSerializer(serializers.ModelSerializer):
 
 
 class CampusConfigSerializer(serializers.ModelSerializer):
+    blocks = serializers.SerializerMethodField()
+
     class Meta:
         model = CampusConfig
         fields = [
@@ -64,12 +92,19 @@ class CampusConfigSerializer(serializers.ModelSerializer):
             'locality',
             'city',
             'state',
+            'country',
             'pin_code',
             'contact_email',
             'contact_phone',
             'website',
             'maps_link',
             'is_configured',
+            'blocks',
             'updated_at',
         ]
-        read_only_fields = ['id', 'updated_at']
+        read_only_fields = ['id', 'updated_at', 'blocks']
+
+    def get_blocks(self, obj):
+        blocks = CampusBlock.objects.all().order_by('code')
+        return CampusBlockSerializer(blocks, many=True).data
+

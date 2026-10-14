@@ -41,6 +41,7 @@ const CATEGORIES = [
   'Bottles & Containers',
   'Stationery & Books',
   'Keys & Badges',
+  'Vehicle Keys',
   'Clothing & Accessories',
   'Wallet & Cards',
   'Bags & Luggage',
