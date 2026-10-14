@@ -170,3 +170,35 @@ class Dispute(models.Model):
     def __str__(self):
         return f"Dispute {self.public_id} ({self.reason}) by {self.reporter.email}"
 
+
+class Feedback(models.Model):
+    public_id = models.CharField(max_length=36, default=uuid.uuid4, editable=False, unique=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='feedbacks'
+    )
+    rating = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)])
+    comment = models.TextField(blank=True)
+    claim = models.ForeignKey(
+        Claim,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='feedbacks'
+    )
+    found_item = models.ForeignKey(
+        'items.FoundItem',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='feedbacks'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Feedback {self.rating}/5 by {self.user.email}"
+

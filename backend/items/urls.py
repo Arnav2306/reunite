@@ -4,7 +4,9 @@ from .views import (
     FoundItemAdminViewSet,
     AvailableItemsPublicViewSet,
     AdminDashboardStatsView,
+    PublicTrustStatsView,
     AnalyzeImageView,
+    CategoryQuestionsView,
     LostItemViewSet,
     MatchViewSet,
     StudentFoundItemViewSet,
@@ -18,7 +20,9 @@ router.register(r'matches', MatchViewSet, basename='match')
 router.register(r'student-found', StudentFoundItemViewSet, basename='student-found')
 
 urlpatterns = [
+    path('public-stats/', PublicTrustStatsView.as_view(), name='public-stats'),
     path('admin-stats/', AdminDashboardStatsView.as_view(), name='admin-stats'),
     path('analyze-image/', AnalyzeImageView.as_view(), name='analyze-image'),
+    path('category-questions/', CategoryQuestionsView.as_view(), name='category-questions'),
     path('', include(router.urls)),
 ]

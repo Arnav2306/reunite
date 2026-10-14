@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { AlertCircle, ArrowRight } from 'lucide-react';
+import { AlertCircle, ArrowRight, GraduationCap, ShieldCheck, Info } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [portalMode, setPortalMode] = useState<'student' | 'staff'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('portal') === 'staff' ? 'staff' : 'student';
+  });
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -22,7 +27,7 @@ export const LoginPage: React.FC = () => {
 
     const trimmedIdentifier = identifier.trim();
     if (!trimmedIdentifier || !password) {
-      setError('Please enter your college email or mobile number and password.');
+      setError('Please enter your email or mobile number and password.');
       return;
     }
 
@@ -45,31 +50,71 @@ export const LoginPage: React.FC = () => {
     <div className="min-h-[75vh] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <h1 className="text-2xl font-bold tracking-wider text-slate-900">REUNITE</h1>
-        <p className="text-xs font-medium text-slate-500 mt-0.5">Campus Lost & Found</p>
-        <h2 className="mt-6 text-xl font-semibold text-slate-900">
-          Sign in to your campus account
+        <p className="text-xs font-medium text-slate-500 mt-0.5">Campus Lost &amp; Found</p>
+        
+        {/* Entry Choice Tabs: Student vs Admin / Staff */}
+        <div className="mt-6 p-1 bg-slate-100 rounded-xl flex items-center justify-center max-w-xs mx-auto border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setPortalMode('student')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
+              portalMode === 'student'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4" />
+            Student
+          </button>
+          <button
+            type="button"
+            onClick={() => setPortalMode('staff')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
+              portalMode === 'staff'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Admin / Staff
+          </button>
+        </div>
+
+        <h2 className="mt-4 text-xl font-semibold text-slate-900">
+          {portalMode === 'student' ? 'Student Sign In' : 'Custodial & Staff Portal'}
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Use your registered college email address or mobile number
+          {portalMode === 'student'
+            ? 'Access your lost reports, active claims, and candidate matches'
+            : 'Operational desk for collection points, verifications, and handovers'}
         </p>
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-xs border border-slate-200 rounded-lg sm:px-10">
+        <div className="bg-white py-8 px-6 shadow-xs border border-slate-200 rounded-2xl sm:px-10 space-y-5">
+          {portalMode === 'staff' && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-2.5 text-xs text-slate-600">
+              <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              <span>
+                Staff authorization is verified server-side. Selecting Staff Portal does not grant privileges to unassigned accounts.
+              </span>
+            </div>
+          )}
+
           {error && (
-            <div className="mb-5 p-3 rounded-md bg-red-50 border border-red-200 flex items-start space-x-2 text-red-800 text-sm">
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-start space-x-2 text-red-800 text-sm">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
               <span className="leading-snug">{error}</span>
             </div>
           )}
 
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <label
                 htmlFor="identifier"
                 className="block text-xs font-semibold text-slate-700 uppercase tracking-wider"
               >
-                College Email or Mobile Number
+                Email Address or Phone Number
               </label>
               <div className="mt-1.5">
                 <input
@@ -80,10 +125,13 @@ export const LoginPage: React.FC = () => {
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="student@college.edu or 9876543210"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-slate-800 focus:border-slate-800 bg-white"
+                  placeholder={portalMode === 'student' ? 'alex@gmail.com or 9876543210' : 'staff@campus.edu or mobile'}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-600 focus:border-blue-600 bg-white"
                 />
               </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Sign in with your registered email or phone number. College email is not required.
+              </p>
             </div>
 
             <div>
@@ -104,30 +152,44 @@ export const LoginPage: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-slate-800 focus:border-slate-800 bg-white"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-600 focus:border-blue-600 bg-white"
                 />
               </div>
             </div>
 
-            <div>
+            <div className="pt-2">
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-md shadow-xs text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className={`w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-xl shadow-xs text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                  portalMode === 'student'
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : 'bg-slate-900 hover:bg-slate-800'
+                }`}
               >
-                {isSubmitting ? 'Signing in...' : 'Sign in'}
+                {isSubmitting
+                  ? 'Signing in...'
+                  : portalMode === 'student'
+                  ? 'Sign in as Student'
+                  : 'Sign in to Staff Desk'}
                 {!isSubmitting && <ArrowRight className="w-4 h-4 ml-1.5" />}
               </button>
             </div>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-200 text-center">
-            <p className="text-xs text-slate-600">
-              New to Reunite?{' '}
-              <Link to="/signup" className="font-semibold text-slate-900 hover:underline">
-                Create a campus account
-              </Link>
-            </p>
+          <div className="pt-4 border-t border-slate-200 text-center">
+            {portalMode === 'student' ? (
+              <p className="text-xs text-slate-600">
+                New student to Reunite?{' '}
+                <Link to="/signup" className="font-semibold text-blue-600 hover:underline">
+                  Create a campus account
+                </Link>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Need administrative access? Privileged roles are provisioned by campus IT.
+              </p>
+            )}
           </div>
         </div>
       </div>

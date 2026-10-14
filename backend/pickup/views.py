@@ -68,6 +68,24 @@ class StudentClaimViewSet(viewsets.ModelViewSet):
         item = serializer.validated_data['found_item_id']
         student_answer = serializer.validated_data['student_answer']
 
+        # Fraud / Abuse Protection: rate limit check on claims per student
+        from django.utils import timezone
+        import datetime
+        recent_cutoff = timezone.now() - datetime.timedelta(minutes=15)
+        recent_claims_count = Claim.objects.filter(student=request.user, created_at__gte=recent_cutoff).count()
+        if recent_claims_count >= 5:
+            AuditLog.objects.create(
+                actor=request.user,
+                action='EXCESSIVE_CLAIMS_FLAGGED',
+                target_type='User',
+                target_id=str(request.user.pk),
+                details={'claims_count_15min': recent_claims_count}
+            )
+            return Response(
+                {'detail': 'Too many claim submissions in a short period. Please wait before submitting another claim.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
         # Friendly pre-check: prevents a confusing IntegrityError message
         existing_claim = Claim.objects.filter(
             student=request.user,
@@ -478,4 +496,39 @@ class StaffDisputeViewSet(viewsets.ModelViewSet):
             notification_type='DISPUTE_UPDATE'
         )
         return Response(self.get_serializer(dispute).data, status=status.HTTP_200_OK)
+
+
+class FeedbackViewSet(viewsets.ModelViewSet):
+    """
+    Feedback submission and inspection.
+    Students/users can submit ratings (1-5) and comments.
+    Staff can view all feedback and aggregate ratings.
+    """
+    from .models import Feedback
+    from .serializers import FeedbackSerializer
+    from rest_framework.permissions import IsAuthenticated
+    serializer_class = FeedbackSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from .models import Feedback
+        user = self.request.user
+        is_staff_user = (user.is_staff or (hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin']))
+        if is_staff_user:
+            return Feedback.objects.all().select_related('user', 'claim', 'found_item').order_by('-created_at')
+        return Feedback.objects.filter(user=user).select_related('claim', 'found_item').order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        from .models import Feedback
+        from django.db.models import Avg
+        total = Feedback.objects.count()
+        avg = Feedback.objects.aggregate(Avg('rating'))['rating__avg'] or 0.0
+        return Response({
+            'total_feedback': total,
+            'average_rating': round(avg, 2),
+        }, status=status.HTTP_200_OK)
 

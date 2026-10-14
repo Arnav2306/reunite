@@ -3,7 +3,7 @@ from rest_framework import viewsets, status, filters
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
@@ -307,26 +307,45 @@ class AdminDashboardStatsView(APIView):
     def get(self, request):
         from pickup.models import Claim, ClaimStatus, Dispute
         from handovers.models import Handover, HandoverStatus
-        from items.models import Match, MatchStatus
+        from items.models import Match, MatchStatus, LostItem
+        from collectionpoint.models import CollectionPoint
 
+        total_lost = LostItem.objects.count()
         total_found = FoundItem.objects.count()
+        listed_items = FoundItem.objects.filter(is_published=True).count()
         awaiting_review = FoundItem.objects.filter(is_published=False).count()
-        published_available = FoundItem.objects.filter(is_published=True).count()
+        published_available = listed_items
         in_custody = FoundItem.objects.filter(
             status__in=[ItemStatus.DEPOSITED, ItemStatus.SECURE_HOLD, ItemStatus.READY_FOR_PICKUP]
         ).count()
         risk_valuable = FoundItem.objects.filter(risk_tier=1).count()
 
+        active_claims = Claim.objects.filter(status__in=[ClaimStatus.PENDING, ClaimStatus.APPROVED]).count()
         pending_claims = Claim.objects.filter(status=ClaimStatus.PENDING).count()
         valuable_awaiting_verification = Claim.objects.filter(status=ClaimStatus.PENDING, found_item__risk_tier=1).count()
         pending_handovers = Handover.objects.filter(status__in=[HandoverStatus.PENDING_OTP, HandoverStatus.READY]).count()
         ready_for_pickup = FoundItem.objects.filter(status=ItemStatus.READY_FOR_PICKUP).count()
+        successful_handovers = max(
+            Handover.objects.filter(status=HandoverStatus.COMPLETED).count(),
+            FoundItem.objects.filter(status=ItemStatus.RESOLVED).count()
+        )
+        unresolved_items = FoundItem.objects.exclude(status=ItemStatus.RESOLVED).count()
+        active_stations = CollectionPoint.objects.filter(status='ACTIVE').count()
         candidate_matches = Match.objects.filter(status=MatchStatus.CANDIDATE).count()
         station_tasks = FoundItem.objects.filter(status=ItemStatus.DEPOSIT_PENDING).count()
+        cannot_carry_tasks = FoundItem.objects.filter(cannot_carry=True).exclude(status=ItemStatus.RESOLVED).count()
         disputes = Dispute.objects.filter(status='OPEN').count()
 
         return Response({
+            'total_lost': total_lost,
             'total_found': total_found,
+            'listed_items': listed_items,
+            'active_claims': active_claims,
+            'pending_verification': pending_claims,
+            'ready_for_pickup': ready_for_pickup,
+            'successful_handovers': successful_handovers,
+            'unresolved_items': unresolved_items,
+            'active_stations': active_stations,
             'awaiting_review': awaiting_review,
             'published_available': published_available,
             'in_custody': in_custody,
@@ -334,11 +353,35 @@ class AdminDashboardStatsView(APIView):
             'pending_claims': pending_claims,
             'valuable_awaiting_verification': valuable_awaiting_verification,
             'pending_handovers': pending_handovers,
-            'ready_for_pickup': ready_for_pickup,
             'candidate_matches': candidate_matches,
             'station_tasks': station_tasks,
+            'cannot_carry_tasks': cannot_carry_tasks,
             'disputes': disputes,
         }, status=status.HTTP_200_OK)
+
+
+class PublicTrustStatsView(APIView):
+    """
+    Public trust metrics returned from real database values.
+    No fake statistics.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from handovers.models import Handover, HandoverStatus
+        from collectionpoint.models import CollectionPoint
+        items_returned = max(
+            Handover.objects.filter(status=HandoverStatus.COMPLETED).count(),
+            FoundItem.objects.filter(status=ItemStatus.RESOLVED).count()
+        )
+        active_stations = CollectionPoint.objects.filter(status='ACTIVE').count()
+        total_registered = FoundItem.objects.count()
+        return Response({
+            'items_returned': items_returned,
+            'active_stations': active_stations,
+            'total_registered': total_registered,
+        }, status=status.HTTP_200_OK)
+
 
 
 class AnalyzeImageView(APIView):
@@ -388,12 +431,14 @@ class StudentFoundItemViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         from .services.matching import evaluate_found_item_matches
         public_id = str(uuid.uuid4())
+        cannot_carry = serializer.validated_data.get('cannot_carry', False)
+        # If student cannot carry the item, status is REPORTED (observation only), not DEPOSIT_PENDING
+        initial_status = ItemStatus.REPORTED if cannot_carry else ItemStatus.DEPOSIT_PENDING
         item = serializer.save(
             public_id=public_id,
             user=self.request.user,
             source='student_report',
-            # Student-submitted items start as REPORTED/DEPOSIT_PENDING and are published for recovery
-            status=ItemStatus.DEPOSIT_PENDING,
+            status=initial_status,
             is_published=True,
             published_at=timezone.now(),
         )
@@ -419,6 +464,34 @@ class StudentFoundItemViewSet(viewsets.ModelViewSet):
         return Response(StudentFoundItemSerializer(item, context={'request': request}).data)
 
 
+class CategoryQuestionsView(APIView):
+    """
+    Returns category-specific multiple-choice questions (MCQs) for lost item reporting.
+    Publicly queryable by authenticated or unauthenticated users.
+    Supports ?category=<name> to query questions for a specific category.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from .services.question_bank import (
+            get_category_questions,
+            get_all_category_question_banks,
+            resolve_category_key,
+            QUESTION_BANK_VERSION,
+        )
+        cat_param = request.query_params.get('category')
+        if cat_param:
+            resolved_key = resolve_category_key(cat_param)
+            questions = get_category_questions(resolved_key)
+            return Response({
+                'version': QUESTION_BANK_VERSION,
+                'category': resolved_key,
+                'questions': questions,
+            }, status=status.HTTP_200_OK)
+
+        return Response(get_all_category_question_banks(), status=status.HTTP_200_OK)
+
+
 class LostItemViewSet(viewsets.ModelViewSet):
     """
     Student-facing endpoint for reporting lost items.
@@ -438,8 +511,48 @@ class LostItemViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
+        from .services.question_bank import build_question_snapshot, extract_normalized_attributes
+        category = serializer.validated_data.get('category', 'Other')
+        raw_answers = serializer.validated_data.get('original_answers') or {}
+        if isinstance(raw_answers, str):
+            try:
+                raw_answers = json.loads(raw_answers)
+            except Exception:
+                raw_answers = {}
+
+        # Ensure question snapshot with version is persisted
+        if not isinstance(raw_answers, dict) or 'version' not in raw_answers:
+            loc_details = {
+                'lost_location': (
+                    (raw_answers.get('lost_location') if isinstance(raw_answers, dict) else None) or
+                    self.request.data.get('lost_location') or ''
+                ),
+                'lost_date': (
+                    (raw_answers.get('lost_date') if isinstance(raw_answers, dict) else None) or
+                    self.request.data.get('lost_date') or ''
+                ),
+                'lost_time': (
+                    (raw_answers.get('lost_time') if isinstance(raw_answers, dict) else None) or
+                    self.request.data.get('lost_time') or ''
+                ),
+            }
+            answers_dict = raw_answers if isinstance(raw_answers, dict) else {}
+            snapshot = build_question_snapshot(category, answers_dict, loc_details)
+        else:
+            snapshot = raw_answers
+
+        normalized = serializer.validated_data.get('normalized_attributes') or {}
+        if not normalized:
+            answers_source = snapshot.get('answers', snapshot) if isinstance(snapshot, dict) else {}
+            normalized = extract_normalized_attributes(category, answers_source)
+
         public_id = str(uuid.uuid4())
-        item = serializer.save(public_id=public_id, user=self.request.user)
+        item = serializer.save(
+            public_id=public_id,
+            user=self.request.user,
+            original_answers=snapshot,
+            normalized_attributes=normalized,
+        )
 
         # Handle optional image upload
         images = self.request.FILES.getlist('images') or self.request.FILES.getlist('image')
@@ -492,6 +605,41 @@ class LostItemViewSet(viewsets.ModelViewSet):
             )
         matches = evaluate_lost_item_matches(lost_item, notify=False)
         serializer = MatchSerializer(matches, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, pk=None):
+        try:
+            lost_item = LostItem.objects.get(pk=pk)
+        except LostItem.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        user = request.user
+        is_staff_user = (user.is_staff or (hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin']))
+        if not is_staff_user and lost_item.user != user:
+            return Response({'detail': 'You do not have permission to edit this report.'}, status=status.HTTP_403_FORBIDDEN)
+        terminal_statuses = ['RESOLVED', 'CANCELLED', 'HANDOVER', 'READY_FOR_PICKUP']
+        if not is_staff_user and lost_item.status in terminal_statuses:
+            return Response({'detail': f'Cannot edit a report with status {lost_item.status}.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(lost_item, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel(self, request, pk=None):
+        try:
+            lost_item = LostItem.objects.get(pk=pk)
+        except LostItem.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        user = request.user
+        is_staff_user = (user.is_staff or (hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin']))
+        if not is_staff_user and lost_item.user != user:
+            return Response({'detail': 'You do not have permission to cancel this report.'}, status=status.HTTP_403_FORBIDDEN)
+        terminal_statuses = ['RESOLVED', 'CANCELLED', 'HANDOVER']
+        if lost_item.status in terminal_statuses:
+            return Response({'detail': f'Report is already {lost_item.status} and cannot be cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+        lost_item.status = 'CANCELLED'
+        lost_item.save(update_fields=['status', 'updated_at'])
+        serializer = self.get_serializer(lost_item)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -547,3 +695,35 @@ class MatchViewSet(viewsets.ReadOnlyModelViewSet):
         match_obj.status = MatchStatus.DISMISSED
         match_obj.save(update_fields=['status', 'updated_at'])
         return Response(self.get_serializer(match_obj).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def feedback(self, request, pk=None):
+        try:
+            match_obj = Match.objects.get(pk=pk)
+        except Match.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        user = request.user
+        is_staff_user = (
+            user.is_staff or 
+            (hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin'])
+        )
+        if not is_staff_user and match_obj.lost_item.user != user:
+            return Response(
+                {'detail': 'You do not have permission to modify this match.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        user_feedback = request.data.get('feedback')
+        notes = request.data.get('notes', '')
+        if user_feedback is not None:
+            if isinstance(user_feedback, str):
+                is_correct = user_feedback.lower() in ['true', '1', 'helpful', 'correct', 'accepted']
+            else:
+                is_correct = bool(user_feedback)
+            match_obj.user_feedback = is_correct
+            match_obj.feedback_notes = notes
+            match_obj.feedback_at = timezone.now()
+            if not is_correct:
+                match_obj.status = MatchStatus.DISMISSED
+            match_obj.save(update_fields=['user_feedback', 'feedback_notes', 'feedback_at', 'status', 'updated_at'])
+        return Response(self.get_serializer(match_obj).data, status=status.HTTP_200_OK)
+

@@ -9,4 +9,5 @@ urlpatterns = [
     path('pickup/', include('pickup.urls')),
     path('handovers/', include('handovers.urls')),
     path('notifications/', include('notifications.urls')),
+    path('audit/', include('audit.urls')),
 ]

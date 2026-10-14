@@ -41,10 +41,19 @@ class SignupSerializer(serializers.Serializer):
 
     def validate_mobile_number(self, value):
         if value:
+            import re
             cleaned = value.strip()
-            if User.objects.filter(mobile_number=cleaned).exists():
+            digits_only = re.sub(r'[\s\-\(\)]', '', cleaned)
+            if not re.match(r'^\+?[0-9]{7,15}$', digits_only):
+                raise serializers.ValidationError('Please enter a valid phone number (7 to 15 digits).')
+            if User.objects.filter(mobile_number=digits_only).exists():
                 raise serializers.ValidationError('A user with this mobile number already exists.')
-            return cleaned
+            return digits_only
+        return None
+
+    def validate_personal_email(self, value):
+        if value:
+            return value.strip().lower()
         return None
 
     def validate(self, attrs):
@@ -62,8 +71,12 @@ class SignupSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
+        validated_data['role'] = 'student'  # Public signup is strictly student-only
         password = validated_data.pop('password')
         email = validated_data.pop('email', None)
+        personal_email = validated_data.get('personal_email')
+        if email and not personal_email:
+            validated_data['personal_email'] = email
         user = User.objects.create_user(email=email, password=password, **validated_data)
         return user
 

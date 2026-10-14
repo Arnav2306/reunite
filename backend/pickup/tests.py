@@ -1082,3 +1082,52 @@ class UUIDRoutingTests(BaseRecoveryFixture):
             f'/api/handovers/admin/{handover.public_id}/confirm-collection/'
         )
         self.assertEqual(response.status_code, http_status.HTTP_403_FORBIDDEN)
+
+
+# ---------------------------------------------------------------------------
+# Feedback and Audit Log Tests
+# ---------------------------------------------------------------------------
+
+class FeedbackAndAuditLogTests(BaseRecoveryFixture):
+    def test_student_submit_feedback(self):
+        self.client.force_authenticate(user=self.student)
+        resp = self.client.post('/api/pickup/feedback/', {
+            'rating': 5,
+            'comment': 'Prompt retrieval and kind staff!',
+        }, format='json')
+        self.assertEqual(resp.status_code, http_status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['rating'], 5)
+        self.assertEqual(resp.data['comment'], 'Prompt retrieval and kind staff!')
+
+    def test_feedback_summary_accessible_to_staff(self):
+        from pickup.models import Feedback
+        Feedback.objects.create(user=self.student, rating=5, comment='Great')
+        Feedback.objects.create(user=self.student2, rating=4, comment='Good')
+
+        self.client.force_authenticate(user=self.custodian)
+        resp = self.client.get('/api/pickup/feedback/summary/')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(resp.data['total_feedback'], 2)
+        self.assertEqual(resp.data['average_rating'], 4.5)
+
+    def test_audit_logs_staff_only(self):
+        # Create an audit log
+        AuditLog.objects.create(
+            actor=self.custodian,
+            action='HANDOVER_COMPLETED',
+            target_type='Handover',
+            target_id='some-id',
+            details={'test': True}
+        )
+
+        # Student is blocked
+        self.client.force_authenticate(user=self.student)
+        resp = self.client.get('/api/audit/logs/')
+        self.assertEqual(resp.status_code, http_status.HTTP_403_FORBIDDEN)
+
+        # Staff can view
+        self.client.force_authenticate(user=self.custodian)
+        resp = self.client.get('/api/audit/logs/')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        self.assertGreaterEqual(len(resp.data), 1)
+

@@ -73,3 +73,82 @@ class AccountsAuthTests(TestCase):
 
         logout_resp = self.client.post('/api/auth/logout/')
         self.assertEqual(logout_resp.status_code, status.HTTP_200_OK)
+
+    def test_signup_cannot_grant_privileged_role(self):
+        resp = self.client.post('/api/auth/signup/', {
+            'name': 'Hacker Admin',
+            'email': 'hacker@example.com',
+            'password': 'password123',
+            'role': 'admin',
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['user']['role'], 'student')
+        user = User.objects.get(email='hacker@example.com')
+        self.assertEqual(user.role, 'student')
+
+    def test_profile_patch_update(self):
+        user = User.objects.create_user(email='profile@example.com', password='password123', name='Original Name')
+        self.client.force_authenticate(user=user)
+
+        # Update name and personal email
+        resp = self.client.patch('/api/auth/me/', {
+            'name': 'Updated Name',
+            'personal_email': 'personal@example.com',
+            'mobile_number': '9876500000',
+            'role': 'admin',  # Attempting to escalate role
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        user.refresh_from_db()
+        self.assertEqual(user.name, 'Updated Name')
+        self.assertEqual(user.personal_email, 'personal@example.com')
+        self.assertEqual(user.mobile_number, '9876500000')
+        self.assertEqual(user.role, 'student')  # Role must not change
+
+    def test_signup_with_gmail_success(self):
+        resp = self.client.post('/api/auth/signup/', {
+            'name': 'Gmail Student',
+            'email': 'student.alex@gmail.com',
+            'password': 'password123',
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['user']['email'], 'student.alex@gmail.com')
+        self.assertEqual(resp.data['user']['personal_email'], 'student.alex@gmail.com')
+
+    def test_signup_with_other_personal_email_success(self):
+        resp = self.client.post('/api/auth/signup/', {
+            'name': 'Outlook Student',
+            'email': 'student.taylor@outlook.com',
+            'password': 'password123',
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['user']['email'], 'student.taylor@outlook.com')
+
+    def test_signup_invalid_phone_format(self):
+        resp = self.client.post('/api/auth/signup/', {
+            'name': 'Bad Phone',
+            'mobile_number': '123',  # Too short
+            'password': 'password123',
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('mobile_number', resp.data)
+
+    def test_signup_duplicate_email(self):
+        User.objects.create_user(email='existing@gmail.com', password='password123', name='Existing')
+        resp = self.client.post('/api/auth/signup/', {
+            'name': 'Duplicate User',
+            'email': 'existing@gmail.com',
+            'password': 'password123',
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', resp.data)
+
+    def test_signup_duplicate_mobile(self):
+        User.objects.create_user(mobile_number='9876543210', password='password123', name='Existing Mobile')
+        resp = self.client.post('/api/auth/signup/', {
+            'name': 'Duplicate Mobile User',
+            'mobile_number': '9876543210',
+            'password': 'password123',
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('mobile_number', resp.data)
+

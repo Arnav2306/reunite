@@ -9,7 +9,26 @@ export interface CollectionPoint {
   capacity: number;
   current_count: number;
   zone: string;
+  directions?: string;
+  map_link?: string;
+  opening_hours?: Record<string, string>;
   created_at?: string;
+  updated_at?: string;
+}
+
+export interface CampusConfig {
+  id?: number;
+  name: string;
+  address: string;
+  locality: string;
+  city: string;
+  state: string;
+  pin_code: string;
+  contact_email: string;
+  contact_phone: string;
+  website: string;
+  maps_link: string;
+  is_configured: boolean;
   updated_at?: string;
 }
 
@@ -98,7 +117,15 @@ export interface AppNotification {
 }
 
 export interface AdminStats {
+  total_lost?: number;
   total_found: number;
+  listed_items?: number;
+  active_claims?: number;
+  pending_verification?: number;
+  ready_for_pickup: number;
+  successful_handovers?: number;
+  unresolved_items?: number;
+  active_stations?: number;
   awaiting_review: number;
   published_available: number;
   in_custody: number;
@@ -106,9 +133,9 @@ export interface AdminStats {
   pending_claims: number;
   valuable_awaiting_verification?: number;
   pending_handovers: number;
-  ready_for_pickup: number;
   candidate_matches?: number;
   station_tasks?: number;
+  cannot_carry_tasks?: number;
   disputes?: number;
 }
 

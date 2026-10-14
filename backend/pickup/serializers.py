@@ -107,3 +107,42 @@ class DisputeSerializer(serializers.ModelSerializer):
         validated_data['found_item'] = found_item
         return super().create(validated_data)
 
+
+class FeedbackSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.name', read_only=True)
+    claim_public_id = serializers.CharField(write_only=True, required=False, allow_null=True)
+    found_item_public_id = serializers.CharField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        from .models import Feedback
+        model = Feedback
+        fields = [
+            'public_id',
+            'user_name',
+            'rating',
+            'comment',
+            'claim_public_id',
+            'found_item_public_id',
+            'created_at',
+        ]
+        read_only_fields = ['public_id', 'user_name', 'created_at']
+
+    def create(self, validated_data):
+        from .models import Feedback, Claim
+        from items.models import FoundItem
+        claim_pid = validated_data.pop('claim_public_id', None)
+        item_pid = validated_data.pop('found_item_public_id', None)
+
+        claim = None
+        found_item = None
+        if claim_pid:
+            claim = Claim.objects.filter(public_id=claim_pid).first()
+            if claim and not found_item:
+                found_item = claim.found_item
+        if item_pid and not found_item:
+            found_item = FoundItem.objects.filter(public_id=item_pid).first()
+
+        validated_data['claim'] = claim
+        validated_data['found_item'] = found_item
+        return super().create(validated_data)
+

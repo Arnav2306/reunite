@@ -17,7 +17,7 @@ class ItemStatus(models.TextChoices):
     READY_FOR_PICKUP = 'READY_FOR_PICKUP', _('Ready For Pickup')
     HANDOVER = 'HANDOVER', _('Handover')
     RESOLVED = 'RESOLVED', _('Resolved')
-    # Add other documented states as needed
+    CANCELLED = 'CANCELLED', _('Cancelled')
 
 class LostItem(models.Model):
     public_id = models.CharField(max_length=36, unique=True)
@@ -47,6 +47,8 @@ class FoundItem(models.Model):
     collection_point = models.ForeignKey('collectionpoint.CollectionPoint', null=True, blank=True, on_delete=models.SET_NULL)
     status = models.CharField(max_length=30, choices=ItemStatus.choices, default=ItemStatus.REPORTED)
     risk_tier = models.IntegerField(default=0, help_text="0=General, 1=Valuable/High Risk")
+    cannot_carry = models.BooleanField(default=False)
+    cannot_carry_details = models.CharField(max_length=255, blank=True)
     is_published = models.BooleanField(default=False)
     published_at = models.DateTimeField(null=True, blank=True)
 

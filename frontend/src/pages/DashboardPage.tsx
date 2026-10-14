@@ -8,7 +8,8 @@ import {
   Search, Camera, ArrowRight, Clock,
   PlusCircle, CheckCircle2, Package,
   Sparkles, MapPin, Eye, X,
-  ShieldAlert, RefreshCw
+  ShieldAlert, RefreshCw, Star, ClipboardList,
+  History, MessageSquare
 } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
@@ -31,8 +32,58 @@ export const DashboardPage: React.FC = () => {
     enabled: !!isStaff,
   });
 
+  const { data: auditLogs = [] } = useQuery<Array<{
+    public_id: string;
+    actor_email: string;
+    actor_name: string;
+    action: string;
+    target_type: string;
+    target_id: string;
+    details: any;
+    timestamp: string;
+  }>>({
+    queryKey: ['admin-audit-logs'],
+    queryFn: async () => {
+      const res = await api.get<any>('/api/audit/logs/');
+      return Array.isArray(res) ? res : res.results || [];
+    },
+    enabled: !!isStaff,
+  });
+
+  const { data: feedbackSummary } = useQuery<{
+    total_feedback: number;
+    average_rating: number;
+  }>({
+    queryKey: ['admin-feedback-summary'],
+    queryFn: async () => api.get('/api/pickup/feedback/summary/'),
+    enabled: !!isStaff,
+  });
+
+  const { data: feedbacksList = [] } = useQuery<Array<{
+    public_id: string;
+    user_name: string;
+    rating: number;
+    comment: string;
+    created_at: string;
+  }>>({
+    queryKey: ['admin-feedbacks-list'],
+    queryFn: async () => {
+      const res = await api.get<any>('/api/pickup/feedback/');
+      return Array.isArray(res) ? res : res.results || [];
+    },
+    enabled: !!isStaff,
+  });
+
   // Admin Case Detail inspection modal state
   const [inspectingCaseId, setInspectingCaseId] = useState<string | null>(null);
+  const [activeAdminTab, setActiveAdminTab] = useState<'queue' | 'tasks' | 'audit' | 'feedback'>('queue');
+
+  // Student feedback state
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackDone, setFeedbackDone] = useState(false);
 
   const { data: caseDetail, isLoading: isCaseDetailLoading } = useQuery<{
     item: AdminFoundItem;
@@ -404,6 +455,16 @@ export const DashboardPage: React.FC = () => {
                         <span className="text-xs text-slate-500">
                           Updated {new Date(claim.updated_at).toLocaleDateString()}
                         </span>
+                        {isReunited && (
+                          <button
+                            type="button"
+                            onClick={() => setShowFeedbackModal(true)}
+                            className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors flex items-center gap-1"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            Leave Feedback
+                          </button>
+                        )}
                         <Link
                           to="/recovery"
                           className="px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-2xs"
@@ -446,6 +507,112 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Student Feedback Modal */}
+        {showFeedbackModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-5 relative">
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2">
+                  <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">How was your recovery experience?</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Your feedback helps our campus custodial and lost-and-found team improve operations.
+                </p>
+              </div>
+
+              {feedbackDone ? (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-center space-y-1">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto" />
+                  <p className="text-sm font-bold text-emerald-900">Thank you for your feedback!</p>
+                  <p className="text-xs text-emerald-700">Your rating has been submitted to campus operations.</p>
+                </div>
+              ) : (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setFeedbackSubmitting(true);
+                    try {
+                      await api.post('/api/pickup/feedback/', {
+                        rating: feedbackRating,
+                        comment: feedbackComment,
+                      });
+                      setFeedbackDone(true);
+                      setTimeout(() => {
+                        setShowFeedbackModal(false);
+                        setFeedbackDone(false);
+                        setFeedbackComment('');
+                        setFeedbackRating(5);
+                      }, 1200);
+                    } catch (err) {
+                      console.error('Feedback submission error:', err);
+                    } finally {
+                      setFeedbackSubmitting(false);
+                    }
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Rating (1 to 5 Stars)</label>
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setFeedbackRating(star)}
+                          className={`p-2 rounded-xl border transition-all ${
+                            feedbackRating >= star
+                              ? 'bg-amber-50 border-amber-300 text-amber-500'
+                              : 'bg-slate-50 border-slate-200 text-slate-300'
+                          }`}
+                        >
+                          <Star className={`w-5 h-5 ${feedbackRating >= star ? 'fill-amber-400' : ''}`} />
+                        </button>
+                      ))}
+                      <span className="text-xs font-bold text-slate-700 ml-2">{feedbackRating} / 5 Stars</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Comments or Suggestions (Optional)</label>
+                    <textarea
+                      rows={3}
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                      placeholder="Tell us what went well or how we can improve..."
+                      className="w-full text-xs p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowFeedbackModal(false)}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={feedbackSubmitting}
+                      className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl transition-colors shadow-xs"
+                    >
+                      {feedbackSubmitting ? 'Submitting...' : 'Submit Feedback'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -539,96 +706,346 @@ export const DashboardPage: React.FC = () => {
         )}
       </div>
 
-      {/* Section 10: Recovery Queue (Table with real backend items) */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden space-y-0">
-        <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Institutional Recovery Queue</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Live items currently registered in custody, awaiting verification, or ready for physical handover.
-            </p>
+      {/* Section 10: Admin Operations Sub-Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <button
+          onClick={() => setActiveAdminTab('queue')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+            activeAdminTab === 'queue'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Package className="w-3.5 h-3.5" />
+          Recovery Queue ({recoveryQueue.length})
+        </button>
+        <button
+          onClick={() => setActiveAdminTab('tasks')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+            activeAdminTab === 'tasks'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <ClipboardList className="w-3.5 h-3.5" />
+          Custodian Task Queue ({stats?.station_tasks ?? 0})
+        </button>
+        <button
+          onClick={() => setActiveAdminTab('audit')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+            activeAdminTab === 'audit'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <History className="w-3.5 h-3.5" />
+          Audit Log Browser ({auditLogs.length})
+        </button>
+        <button
+          onClick={() => setActiveAdminTab('feedback')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+            activeAdminTab === 'feedback'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          Student Feedback ({feedbackSummary?.total_feedback ?? 0})
+        </button>
+      </div>
+
+      {/* TAB 1: RECOVERY QUEUE */}
+      {activeAdminTab === 'queue' && (
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xs overflow-hidden space-y-0">
+          <div className="p-5 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Institutional Recovery Queue</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Live items currently registered in custody, awaiting verification, or ready for physical handover.
+              </p>
+            </div>
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Total Items: <strong>{recoveryQueue.length}</strong>
+            </div>
           </div>
-          <div className="text-xs font-medium text-slate-500">
-            Total Items: <strong>{recoveryQueue.length}</strong>
+
+          {isQueueLoading ? (
+            <div className="py-16 text-center text-xs text-slate-500">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-400 mb-2" />
+              Loading recovery queue...
+            </div>
+          ) : recoveryQueue.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400">
+              No items registered in the recovery queue yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+                    <th className="py-3 px-4">Item</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Risk</th>
+                    <th className="py-3 px-4">Location</th>
+                    <th className="py-3 px-4">Last Updated</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {recoveryQueue.slice(0, 15).map((item) => (
+                    <tr key={item.public_id} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-slate-900 dark:text-white">{item.title || item.category}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">ID: {item.public_id.substring(0, 8)}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          item.status === 'READY_FOR_PICKUP'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                            : item.status === 'RESOLVED'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                            : item.status === 'DEPOSIT_PENDING'
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                            : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                        }`}>
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          item.risk_tier === 1
+                            ? 'bg-red-50 text-red-800 dark:bg-red-900/40 dark:text-red-300 border border-red-200 dark:border-red-800'
+                            : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                        }`}>
+                          {item.risk_tier === 1 ? 'Valuable (OTP)' : 'General'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="text-slate-800 dark:text-slate-200 font-medium">
+                          {item.collection_location?.station_code || 'Central Desk'}
+                        </div>
+                        <div className="text-[11px] text-slate-400">{item.found_location || 'Campus'}</div>
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-[11px]">
+                        {new Date(item.published_at || item.found_date || Date.now()).toLocaleDateString()}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          onClick={() => setInspectingCaseId(item.public_id)}
+                          className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 rounded-lg shadow-2xs transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                          Inspect Case
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: CUSTODIAN TASK QUEUE */}
+      {activeAdminTab === 'tasks' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-xs">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-blue-600" />
+              Assigned Operational Task Queue
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Prioritized custodial actions required across physical campus stations and verification checkpoints.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+              <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase text-amber-800 dark:text-amber-400">Station Deposits</span>
+                  <span className="text-lg font-extrabold text-amber-900 dark:text-amber-300">{stats?.station_tasks ?? 0}</span>
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Items reported awaiting physical deposit at collection stations or on-site retrieval.
+                </p>
+                <Link
+                  to="/admin/collection-points"
+                  className="block text-center py-2 px-3 text-xs font-bold text-amber-900 bg-amber-200/80 hover:bg-amber-200 dark:bg-amber-900/60 dark:text-amber-200 rounded-lg transition-colors"
+                >
+                  Process Station Deposits →
+                </Link>
+              </div>
+
+              <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase text-blue-800 dark:text-blue-400">Claims Verification</span>
+                  <span className="text-lg font-extrabold text-blue-900 dark:text-blue-300">{stats?.pending_claims ?? 0}</span>
+                </div>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Student ownership claims with submitted answers awaiting staff verification review.
+                </p>
+                <Link
+                  to="/admin/verification"
+                  className="block text-center py-2 px-3 text-xs font-bold text-blue-900 bg-blue-200/80 hover:bg-blue-200 dark:bg-blue-900/60 dark:text-blue-200 rounded-lg transition-colors"
+                >
+                  Open Verification Queue →
+                </Link>
+              </div>
+
+              <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase text-emerald-800 dark:text-emerald-400">Pending Handovers</span>
+                  <span className="text-lg font-extrabold text-emerald-900 dark:text-emerald-300">{stats?.pending_handovers ?? 0}</span>
+                </div>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  Approved items ready for student in-person collection with OTP or ID verification.
+                </p>
+                <Link
+                  to="/admin/handovers"
+                  className="block text-center py-2 px-3 text-xs font-bold text-emerald-900 bg-emerald-200/80 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:text-emerald-200 rounded-lg transition-colors"
+                >
+                  Execute Handovers →
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-        {isQueueLoading ? (
-          <div className="py-16 text-center text-xs text-slate-500">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-400 mb-2" />
-            Loading recovery queue...
+      {/* TAB 3: DEDICATED AUDIT LOG BROWSER */}
+      {activeAdminTab === 'audit' && (
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xs overflow-hidden space-y-0">
+          <div className="p-5 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <History className="w-5 h-5 text-slate-600" />
+                Institutional Audit Log Browser
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Tamper-evident record of all custody state transitions, administrative decisions, and handovers.
+              </p>
+            </div>
+            <div className="text-xs font-mono bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded text-slate-600 dark:text-slate-300">
+              {auditLogs.length} events logged
+            </div>
           </div>
-        ) : recoveryQueue.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-500">
-            No items registered in the recovery queue yet.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                  <th className="py-3 px-4">Item</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Risk</th>
-                  <th className="py-3 px-4">Location</th>
-                  <th className="py-3 px-4">Last Updated</th>
-                  <th className="py-3 px-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recoveryQueue.slice(0, 15).map((item) => (
-                  <tr key={item.public_id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{item.title || item.category}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">ID: {item.public_id.substring(0, 8)}</div>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                        item.status === 'READY_FOR_PICKUP'
-                          ? 'bg-blue-100 text-blue-800'
-                          : item.status === 'RESOLVED'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : item.status === 'DEPOSIT_PENDING'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
-                        item.risk_tier === 1
-                          ? 'bg-red-50 text-red-800 border border-red-200'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {item.risk_tier === 1 ? 'Valuable (OTP)' : 'General'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="text-slate-800 font-medium">
-                        {item.collection_location?.station_code || 'Central Desk'}
-                      </div>
-                      <div className="text-[11px] text-slate-400">{item.found_location || 'Campus'}</div>
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-500 text-[11px]">
-                      {new Date(item.published_at || item.found_date || Date.now()).toLocaleDateString()}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => setInspectingCaseId(item.public_id)}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-2xs transition-colors"
-                      >
-                        <Eye className="w-3.5 h-3.5 mr-1 text-slate-500" />
-                        Inspect Case
-                      </button>
-                    </td>
+
+          {auditLogs.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400">
+              No audit log entries recorded yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+                    <th className="py-3 px-4">Timestamp</th>
+                    <th className="py-3 px-4">Actor</th>
+                    <th className="py-3 px-4">Action</th>
+                    <th className="py-3 px-4">Target Entity</th>
+                    <th className="py-3 px-4">Details</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700 font-mono text-[11px]">
+                  {auditLogs.slice(0, 25).map((log) => (
+                    <tr key={log.public_id} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
+                      <td className="py-3 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {new Date(log.timestamp).toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 font-sans text-slate-900 dark:text-slate-200">
+                        {log.actor_name || log.actor_email}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                          {log.action}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                        {log.target_type} ({log.target_id?.substring(0, 8) || 'N/A'})
+                      </td>
+                      <td className="py-3 px-4 font-sans text-slate-500 dark:text-slate-400 truncate max-w-xs">
+                        {typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details || '—')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: STUDENT FEEDBACK VIEW */}
+      {activeAdminTab === 'feedback' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-xs flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-500">
+                <Star className="w-7 h-7 fill-amber-400 text-amber-400" />
+              </div>
+              <div>
+                <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                  {feedbackSummary?.average_rating ? `${feedbackSummary.average_rating} / 5.0` : 'No ratings yet'}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Average Student Recovery Rating</p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-xs flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600">
+                <MessageSquare className="w-7 h-7" />
+              </div>
+              <div>
+                <div className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                  {feedbackSummary?.total_feedback ?? 0}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Feedback Submissions</p>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Recent Student Recovery Reviews</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Feedback and suggestions submitted after receiving items or using campus lost-and-found services.
+              </p>
+            </div>
+
+            {feedbacksList.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400">
+                No student feedback entries submitted yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                {feedbacksList.map((fb) => (
+                  <div key={fb.public_id} className="p-5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center text-amber-400">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`w-3.5 h-3.5 ${s <= fb.rating ? 'fill-amber-400' : 'text-slate-200 dark:text-slate-700'}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{fb.user_name || 'Student'}</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">{new Date(fb.created_at).toLocaleDateString()}</span>
+                    </div>
+                    {fb.comment && (
+                      <p className="text-xs text-slate-600 dark:text-slate-300 italic bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                        "{fb.comment}"
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Section 11: Admin Complete Case Inspection Modal */}
       {inspectingCaseId && (

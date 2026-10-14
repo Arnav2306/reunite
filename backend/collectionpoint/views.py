@@ -32,3 +32,36 @@ class CollectionPointViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsStaff()]
         return [IsAuthenticated()]
+
+
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from .models import CampusConfig
+from .serializers import CampusConfigSerializer
+
+class CampusConfigView(APIView):
+    """
+    Singleton endpoint for college campus details.
+    GET: Readable by any user (students, staff, public) to display official college details.
+    PATCH/PUT: Restricted to staff/admin to configure college name, address, contact, maps link.
+    """
+    def get_permissions(self):
+        if self.request.method in ['PATCH', 'PUT', 'POST']:
+            return [IsStaff()]
+        return [AllowAny()]
+
+    def get(self, request):
+        config = CampusConfig.get_solo()
+        return Response(CampusConfigSerializer(config).data, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        config = CampusConfig.get_solo()
+        data = request.data.copy()
+        # If real name or address provided, mark as configured
+        if data.get('name') and data.get('name') != 'Campus Configuration Pending':
+            data['is_configured'] = True
+        serializer = CampusConfigSerializer(config, data=data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

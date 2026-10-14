@@ -4,6 +4,16 @@ Django settings for reunite_backend project.
 
 from pathlib import Path
 import os
+try:
+    from dotenv import load_dotenv
+    _base_dir_env = Path(__file__).resolve().parent.parent / '.env'
+    _root_dir_env = Path(__file__).resolve().parent.parent.parent / '.env'
+    if _base_dir_env.exists():
+        load_dotenv(_base_dir_env)
+    if _root_dir_env.exists():
+        load_dotenv(_root_dir_env)
+except ImportError:
+    pass
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

@@ -1,58 +1,93 @@
 # REUNITE — Project Progress & Deployment Status
 
-## Milestone: Final Pre-Handover Deployment Audit Completed
-* **Audit Date**: October 8, 2026
-* **Overall Status**: `PASS — INSTITUTIONAL CONFIGURATION REQUIRED`
+## Milestone: Stage 8 Acceptance Testing & Release Preparation
+* **Audit & Update Date**: October 10, 2026
+* **Overall Status**: `AUTOMATION VERIFIED — MANUAL BROWSER ACCEPTANCE REQUIRED`
 
 ---
 
-## 1. DEVELOPER COMPLETED & VERIFIED
+## 1. VERIFIED IMPLEMENTATION STATUS
 
-All application-level design, development, security verification, automated testing, and packaging tasks are complete:
+All required functionality has been verified against current code and automated tests:
 
-* **Django System Check**: PASS (0 issues identified)
-* **Backend Automated Tests**: PASS (117 / 117 tests passing)
-* **Database Schema Integrity**: PASS (all migrations applied, `makemigrations --check --dry-run` reports no changes detected)
-* **Frontend Production Build**: PASS (`tsc && vite build` completed with zero TypeScript errors)
-* **Role-Based Access Control**: PASS (Student, Custodian, Admin, and SuperAdmin permissions strictly enforced; student access to staff endpoints blocked)
-* **Cryptographic OTP Handover**: PASS (6-digit hashed OTP via `make_password`, 24h expiration, single-use, 5-attempt lockout for Tier 1 valuable items)
-* **Private Field Protection**: PASS (Serial numbers, IMEIs, internal custodian notes, and secret verification answers shielded from public and student APIs)
-* **Advisory AI Integration**: PASS (Gemini 2.5 Flash integrated with strict prompt-level anti-hallucination guardrails; automatic graceful fallback to manual entry)
-* **Station Ingestion Tooling**: PASS (`python manage.py setup_campus_stations --file campus_stations.json` verified)
-* **Dual-Mode Frontend API**: PASS (supports both reverse-proxy relative paths and separate domains via `VITE_API_URL`)
-* **Multipart Upload Handling**: PASS (FormData boundaries auto-resolved by browser without manual JSON header overriding)
-* **Audit Logging**: PASS (tamper-proof event logs for custody transitions and administrative actions)
-* **Deployment Documentation**: PASS (`COLLEGE_DEPLOYMENT_GUIDE.md`, `COLLEGE_PILOT_INFORMATION.md`, `PILOT_READINESS_CHECKLIST.md`, `FINAL_DEPLOYMENT_AUDIT.md`, `.env.production.example`)
+### Authentication & Authorization
+* **Student vs Staff Portals**: Dedicated portal views (`/login`, `/signup`) with role-based routing.
+* **Email & Phone Sign-in**: Registration and login using either email or phone without requiring mandatory college domains.
+* **Server-Side Role Protection**: Public registrations and profile updates strictly ignore `role` fields, preventing privilege escalation.
 
----
+### Student Experience
+* **Profile Editing**: `PATCH /api/auth/me/` supports updating student name, personal email, and mobile number.
+* **Lost-Report Lifecycle**: `PATCH /api/items/lost-items/<id>/` allows editing report details; `/cancel/` marks status as `CANCELLED` without deleting database records.
+* **Category-Specific Questions**: 3-4 category questions dynamically rendered for high-fidelity lost-item matching.
+* **Observation-Only / Cannot-Carry Reporting**: `cannot_carry` flag and `cannot_carry_details` set item to `REPORTED` (not `DEPOSIT_PENDING`), ensuring physical custody is not falsely claimed.
+* **Matching & Notifications**: Matching signals (category, attributes, location, time) provide Strong/Possible/Weak labels and score breakdowns; in-app notifications generated for high matches (>= 65).
+* **Claims & Ownership Verification**: Fraud prevention with a 15-minute submission rate limit (HTTP 429 after 5 submissions); secret verification questions preserved.
 
-## 2. COLLEGE / IT MUST COMPLETE
+### Custodian & Administrative Operations
+* **Station Availability & Deposit**: Real stations configured from `campus_stations.json`. Unavailable stations (`status != ACTIVE`) are strictly rejected on deposit submissions.
+* **Valuable vs General Handover**:
+  - Tier 1 Valuable items require cryptographic 6-digit OTP verification (`/api/handovers/admin/<id>/verify-otp/`) with 24-hour expiration and 5-attempt lockout.
+  - General items use direct authorized custodian handover (`/api/handovers/admin/<id>/confirm-collection/`) without requiring an OTP.
+* **Admin Audit Browser & Real Statistics**:
+  - `/api/audit/logs/` returns tamper-evident custody and dispute logs.
+  - Public trust stats (`/api/items/public-stats/`) and admin dashboard stats (`/api/items/admin-stats/`) query real database records with zero fabricated figures.
 
-The following actions require institutional infrastructure, credentials, and facilities:
-
-1. **Host Environment**: Provision a production Linux or Windows server/VM with Python 3.11+ and Node.js 20+.
-2. **Domain & HTTPS**: Configure campus domain (e.g., `reunite.campus.edu`) and install a valid TLS/SSL certificate.
-3. **Database**: Provision a PostgreSQL instance and provide connection parameters via `DATABASE_URL` or `DB_*`.
-4. **Persistent Media Storage**: Mount a persistent volume at `MEDIA_ROOT` for uploaded item photographs with daily backup routines.
-5. **Environment Configuration**: Copy `.env.production.example` to `.env` on the host, supply a strong `DJANGO_SECRET_KEY`, set `DJANGO_DEBUG=False`, and specify `DJANGO_ALLOWED_HOSTS`.
-6. **Campus Station Inventory**: Populate official buildings, floors, and collection desks into `campus_stations.json` and run `python manage.py setup_campus_stations --file campus_stations.json`.
-7. **Primary Administrator**: Create the central administrative superuser on the deployed server via `python manage.py createsuperuser`.
-8. **AI Key Provisioning (Optional)**: Add Google Gemini API key to server `.env` as `GEMINI_API_KEY` (or confirm manual entry mode).
+### UI/UX & Design System
+* **Light / Dark Mode**: Seamless theme switching with persistent localStorage preference (`ThemeContext.tsx`).
+* **Responsive Layouts**: Accessible, modern layouts across desktop and mobile screens.
 
 ---
 
-## 3. PILOT SIGN-OFF REQUIRED
+## 2. AUTOMATED TESTING & BUILD VERIFICATION
 
-Prior to opening the platform to the student body:
-
-1. **Station Custodian Briefing**: Designated staff members must review operational workflows in `docs/CAMPUS_PILOT_RUNBOOK.md`.
-2. **17-Step Smoke Test**: Pilot leads execute the end-to-end verification sequence detailed in `COLLEGE_DEPLOYMENT_GUIDE.md`.
-3. **Pilot Authorization Form**: Institutional administrative lead executes sign-off in `COLLEGE_PILOT_INFORMATION.md`.
+* **Django System Checks**: PASS (`python manage.py check` — 0 issues identified)
+* **Database Schema Integrity**: PASS (`python manage.py makemigrations --check --dry-run` — No changes detected; all migrations applied to development SQLite database)
+* **Backend Automated Test Suite**: PASS (123 tests passing)
+  - `accounts.tests`: 9 / 9 PASS
+  - `items.tests` & `pickup.tests`: 114 / 114 PASS (including regression tests for unavailable station deposit rejection and cannot-carry initial status)
+* **Frontend Production Build**: PASS (`tsc && vite build` — 0 errors, built in 1.71s)
+* **Local Development Servers**:
+  - Backend API: `http://127.0.0.1:8000/api/health/` (HTTP 200 OK)
+  - Frontend: `http://localhost:5173/` (HTTP 200 OK)
 
 ---
 
-## Final Status
+## 3. PLAYWRIGHT / BROWSER AUTOMATION BLOCKER
+
+Automated browser subagents in this environment encountered an unhandled Playwright context error:
 ```text
-READY FOR INSTITUTIONAL DEPLOYMENT CONFIGURATION
+failed to create new page using playwright context: playwright: Cannot read properties of undefined (reading '_page')
 ```
-*No further software-engineering or application-development work is required. The system is ready for handover to institutional deployment teams.*
+* **Cause**: The agent IDE harness's internal Playwright controller is unable to allocate a page object in this Windows execution sandbox.
+* **Impact**: Headless browser automation cannot run autonomously within the agent harness.
+* **Remedy**: Interactive manual acceptance must be performed directly in the user's browser at `http://localhost:5173/`.
+
+---
+
+## 4. MANUAL ACCEPTANCE TESTING CHECKLIST
+
+### Student Journey (`http://localhost:5173/`)
+- [ ] 1. Navigate to `/signup` and register with a personal email or phone number.
+- [ ] 2. Navigate to `/login` and sign in with the student account.
+- [ ] 3. Toggle dark/light mode in the navigation bar; verify preference persists upon page reload.
+- [ ] 4. Open `/profile`, click "Edit Profile", update personal email and phone number, and verify changes persist.
+- [ ] 5. Navigate to `/report-lost`, complete the form with category-specific questions, and submit.
+- [ ] 6. View `/my-reports`, edit description, and test the cancel report action.
+- [ ] 7. Navigate to `/report-found`, enable "Cannot Carry / Observation Only", and submit. Verify item shows as reported observation.
+- [ ] 8. Browse `/available` items and view match cards on `/my-matches`.
+- [ ] 9. Check `/notifications` for claim updates or high-confidence match alerts.
+
+### Staff & Custodian Journey (`http://localhost:5173/login?portal=staff`)
+- [ ] 1. Log in with a staff/custodian test account.
+- [ ] 2. View custodian task queue and verify active station capacities.
+- [ ] 3. Review a pending student claim and approve it.
+- [ ] 4. Test handover for a General Item: verify direct collection without requiring an OTP.
+- [ ] 5. Test handover for a Valuable Item: verify OTP verification prompt and student code entry.
+- [ ] 6. View `/admin` statistics and `/api/audit/logs/` for immutable event history.
+
+---
+
+## 5. EXACT NEXT TASK
+
+* Perform manual walk-through using the acceptance checklist above on `http://localhost:5173/`.
+* Once visual and interactive acceptance is approved, stage and commit the verified implementation.

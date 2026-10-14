@@ -1,4 +1,16 @@
 {
+  "campus": {
+    "name": "OFFICIAL-COLLEGE-NAME",
+    "address": "OFFICIAL-CAMPUS-ADDRESS",
+    "locality": "OFFICIAL-LOCALITY-OR-SECTOR",
+    "city": "OFFICIAL-CITY",
+    "state": "OFFICIAL-STATE",
+    "pin_code": "OFFICIAL-PIN-CODE",
+    "contact_email": "lostfound@college.edu",
+    "contact_phone": "+91-XXXXXXXXXX",
+    "website": "https://www.college.edu",
+    "maps_link": "https://maps.google.com/?q=OFFICIAL-CAMPUS-LOCATION"
+  },
   "stations": [
     {
       "code": "OFFICIAL-STATION-CODE-1",
@@ -6,7 +18,10 @@
       "floor": "OFFICIAL-FLOOR-NUMBER",
       "name": "OFFICIAL-CABIN-OR-STATION-NAME",
       "status": "ACTIVE",
+      "zone": "North Campus",
+      "capacity": 50,
       "directions": "OFFICIAL-WALKING-DIRECTIONS-WITHIN-CAMPUS",
+      "map_link": "https://maps.google.com/?q=OFFICIAL-STATION-1",
       "opening_hours": {
         "Monday - Friday": "09:00 - 17:00"
       }
@@ -17,7 +32,10 @@
       "floor": "OFFICIAL-FLOOR-NUMBER",
       "name": "OFFICIAL-CABIN-OR-STATION-NAME",
       "status": "ACTIVE",
+      "zone": "South Campus",
+      "capacity": 50,
       "directions": "OFFICIAL-WALKING-DIRECTIONS-WITHIN-CAMPUS",
+      "map_link": "https://maps.google.com/?q=OFFICIAL-STATION-2",
       "opening_hours": {
         "Monday - Friday": "09:00 - 17:00"
       }

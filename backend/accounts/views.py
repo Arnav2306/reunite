@@ -51,6 +51,43 @@ class MeView(APIView):
         serializer = UserSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    def patch(self, request):
+        """
+        Allow authenticated users to update their own profile fields:
+        - name
+        - mobile_number (must be unique)
+        - personal_email
+        Role and email (primary identifier) cannot be changed here.
+        """
+        from django.db.models import Q
+        user = request.user
+        data = request.data
+
+        # name
+        if 'name' in data:
+            name = str(data['name']).strip()
+            if not name:
+                return Response({'detail': 'Name cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.name = name
+
+        # mobile_number — enforce uniqueness
+        if 'mobile_number' in data:
+            mobile = str(data['mobile_number']).strip() if data['mobile_number'] else None
+            if mobile:
+                conflict = type(user).objects.filter(mobile_number=mobile).exclude(pk=user.pk).exists()
+                if conflict:
+                    return Response({'detail': 'This mobile number is already registered.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.mobile_number = mobile or None
+
+        # personal_email
+        if 'personal_email' in data:
+            pe = str(data['personal_email']).strip() if data['personal_email'] else None
+            user.personal_email = pe or None
+
+        user.save(update_fields=['name', 'mobile_number', 'personal_email'])
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 

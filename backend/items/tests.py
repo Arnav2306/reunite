@@ -624,3 +624,266 @@ class AIDescriptionServiceTests(BaseItemFixture):
         self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
         self.assertIn('available', resp.data)
         self.assertFalse(resp.data['available'])
+
+
+# ---------------------------------------------------------------------------
+# 10. Audit Resolution & Extended Features Tests
+# ---------------------------------------------------------------------------
+
+class ExtendedFeaturesTests(BaseItemFixture):
+    def test_lost_item_partial_update(self):
+        lost = LostItem.objects.create(
+            user=self.student,
+            category='Electronics',
+            description='Black Dell laptop',
+            status='REPORTED',
+        )
+        self.auth_student()
+        resp = self.client.patch(f'/api/items/lost-items/{lost.id}/', {
+            'description': 'Black Dell Inspiron laptop with stickers',
+        }, format='json')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        lost.refresh_from_db()
+        self.assertEqual(lost.description, 'Black Dell Inspiron laptop with stickers')
+
+    def test_cross_user_lost_item_update_forbidden(self):
+        lost = LostItem.objects.create(
+            user=self.student2,
+            category='Electronics',
+            description='Other user laptop',
+            status='REPORTED',
+        )
+        self.auth_student()  # Logged in as student 1
+        resp = self.client.patch(f'/api/items/lost-items/{lost.id}/', {
+            'description': 'Attempting unauthorized edit',
+        }, format='json')
+        self.assertEqual(resp.status_code, http_status.HTTP_403_FORBIDDEN)
+
+    def test_lost_item_cancellation_preserves_record(self):
+        lost = LostItem.objects.create(
+            user=self.student,
+            category='Documents',
+            description='Student ID card',
+            status='REPORTED',
+        )
+        self.auth_student()
+        resp = self.client.post(f'/api/items/lost-items/{lost.id}/cancel/')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        lost.refresh_from_db()
+        self.assertEqual(lost.status, 'CANCELLED')
+        # Record still exists in database
+        self.assertTrue(LostItem.objects.filter(id=lost.id).exists())
+
+    def test_cannot_carry_found_item_flag(self):
+        item = FoundItem.objects.create(
+            user=self.student,
+            category='Bags',
+            description='Heavy blue travel bag left near staircase',
+            found_location='Library entrance',
+            cannot_carry=True,
+            cannot_carry_details='2nd floor main staircase landing',
+            status='REPORTED',
+        )
+        self.assertTrue(item.cannot_carry)
+        self.assertEqual(item.cannot_carry_details, '2nd floor main staircase landing')
+
+    def test_match_feedback_submission(self):
+        lost = LostItem.objects.create(
+            user=self.student,
+            category='Keys',
+            description='Dorm room keys',
+            status='REPORTED',
+        )
+        match = Match.objects.create(
+            lost_item=lost,
+            found_item=self.found_item,
+            score=82,
+            status=MatchStatus.CANDIDATE,
+            score_breakdown={'category': 40, 'attributes': 42},
+        )
+        self.auth_student()
+        resp = self.client.post(f'/api/items/matches/{match.id}/feedback/', {
+            'feedback': 'HELPFUL',
+            'notes': 'This looks very similar to my keychain',
+        }, format='json')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        match.refresh_from_db()
+        self.assertTrue(match.user_feedback)
+        self.assertEqual(match.feedback_notes, 'This looks very similar to my keychain')
+
+    def test_admin_stats_endpoint(self):
+        self.auth_staff()
+        resp = self.client.get('/api/items/admin-stats/')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        self.assertIn('total_found', resp.data)
+        self.assertIn('pending_claims', resp.data)
+        self.assertIn('pending_handovers', resp.data)
+
+    def test_unavailable_station_cannot_be_selected_for_deposit(self):
+        from collectionpoint.models import CollectionPoint
+        inactive_station = CollectionPoint.objects.create(
+            public_id='cp-inactive-999',
+            station_code='STAT-INACT',
+            building='Closed Building',
+            status='INACTIVE',
+        )
+        self.auth_student()
+        resp = self.client.post('/api/items/student-found/', {
+            'title': 'Lost Keys Found',
+            'category': 'Keys',
+            'description': 'Found near entrance',
+            'found_date': '2026-10-10',
+            'found_location': 'Closed Building',
+            'collection_point': inactive_station.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, http_status.HTTP_400_BAD_REQUEST)
+        self.assertIn('collection_point', resp.data)
+
+    def test_cannot_carry_sets_reported_status_not_deposit_pending(self):
+        self.auth_student()
+        resp = self.client.post('/api/items/student-found/', {
+            'title': 'Heavy Mountain Bike',
+            'category': 'Other',
+            'description': 'Locked heavy mountain bike left abandoned',
+            'found_date': '2026-10-10',
+            'found_location': 'Campus Bike Racks',
+            'cannot_carry': True,
+            'cannot_carry_details': 'Too heavy to transport to lost & found desk',
+        }, format='json')
+        self.assertEqual(resp.status_code, http_status.HTTP_201_CREATED)
+        self.assertEqual(resp.data['status'], 'REPORTED')
+        created_item = FoundItem.objects.get(id=resp.data['id'])
+        self.assertEqual(created_item.status, ItemStatus.REPORTED)
+
+
+# ---------------------------------------------------------------------------
+# 11. Category-Specific Questions Regression Tests
+# ---------------------------------------------------------------------------
+
+class CategoryQuestionsRegressionTests(BaseItemFixture):
+    def test_all_categories_have_3_to_4_questions(self):
+        from items.services.question_bank import CATEGORY_QUESTION_BANK, QUESTION_BANK_VERSION
+        self.assertEqual(QUESTION_BANK_VERSION, '2026.1')
+        self.assertGreaterEqual(len(CATEGORY_QUESTION_BANK), 10)
+
+        for cat_name, questions in CATEGORY_QUESTION_BANK.items():
+            self.assertIn(
+                len(questions), [3, 4],
+                f"Category '{cat_name}' must have 3 or 4 questions, but has {len(questions)}."
+            )
+            for q in questions:
+                self.assertIn('key', q)
+                self.assertIn('label', q)
+                self.assertIn('options', q)
+                self.assertGreaterEqual(len(q['options']), 4)
+                # Check inclusion of 'Other' and uncertainty options
+                options_str = " ".join(q['options']).lower()
+                self.assertIn('other', options_str, f"Category '{cat_name}' question '{q['key']}' missing Other")
+                self.assertTrue(
+                    'not sure' in options_str or 'none' in options_str or 'generic' in options_str,
+                    f"Category '{cat_name}' question '{q['key']}' missing uncertainty option"
+                )
+
+    def test_phone_category_questions_relevance(self):
+        from items.services.question_bank import get_category_questions
+        questions = get_category_questions('Phone')
+        keys = [q['key'] for q in questions]
+        self.assertEqual(keys, ['brand', 'main_color', 'case_style', 'distinguishing_feature'])
+
+    def test_laptop_category_questions_relevance(self):
+        from items.services.question_bank import get_category_questions
+        questions = get_category_questions('Laptop')
+        keys = [q['key'] for q in questions]
+        self.assertEqual(keys, ['brand', 'model_family', 'main_color', 'distinctive_mark'])
+
+    def test_backpack_category_questions_relevance(self):
+        from items.services.question_bank import get_category_questions
+        questions = get_category_questions('Backpack & Bags')
+        keys = [q['key'] for q in questions]
+        self.assertEqual(keys, ['main_color', 'brand', 'bag_type', 'distinguishing_feature'])
+
+    def test_wallet_category_questions_relevance(self):
+        from items.services.question_bank import get_category_questions
+        questions = get_category_questions('Wallet & Cards')
+        keys = [q['key'] for q in questions]
+        self.assertEqual(keys, ['main_color', 'material', 'wallet_style', 'distinguishing_mark'])
+
+    def test_keys_category_questions_relevance(self):
+        from items.services.question_bank import get_category_questions
+        questions = get_category_questions('Keys & Badges')
+        keys = [q['key'] for q in questions]
+        self.assertEqual(keys, ['key_count_type', 'keychain_presence', 'keychain_style_color', 'distinguishing_feature'])
+
+    def test_bottle_category_questions_relevance(self):
+        from items.services.question_bank import get_category_questions
+        questions = get_category_questions('Bottles & Containers')
+        keys = [q['key'] for q in questions]
+        self.assertEqual(keys, ['main_color', 'bottle_type', 'brand', 'distinguishing_feature'])
+
+    def test_category_questions_endpoint(self):
+        # Query specific category
+        resp = self.client.get('/api/items/category-questions/?category=Phone')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        self.assertEqual(resp.data['category'], 'Phone')
+        self.assertEqual(len(resp.data['questions']), 4)
+        self.assertEqual(resp.data['version'], '2026.1')
+
+        # Query all categories
+        resp_all = self.client.get('/api/items/category-questions/')
+        self.assertEqual(resp_all.status_code, http_status.HTTP_200_OK)
+        self.assertIn('categories', resp_all.data)
+        self.assertIn('questions', resp_all.data)
+
+    def test_lost_item_creation_persists_versioned_question_snapshot(self):
+        self.auth_student()
+        resp = self.client.post('/api/items/lost-items/', {
+            'category': 'Phone',
+            'description': 'Lost my iPhone in the student center cafeteria',
+            'original_answers': {
+                'brand': 'Apple (iPhone)',
+                'main_color': 'Black / Space Grey',
+                'case_style': 'Transparent / Clear case',
+                'distinguishing_feature': 'Screen protector / tempered glass installed',
+                'lost_location': 'Student Center Cafeteria',
+                'lost_date': '2026-10-10',
+            }
+        }, format='json')
+        self.assertEqual(resp.status_code, http_status.HTTP_201_CREATED)
+        lost_id = resp.data['id']
+
+        lost = LostItem.objects.get(id=lost_id)
+        snapshot = lost.original_answers
+        self.assertEqual(snapshot['version'], '2026.1')
+        self.assertEqual(snapshot['category'], 'Phone')
+        self.assertIn('questions', snapshot)
+        self.assertEqual(len(snapshot['questions']), 4)
+        self.assertEqual(snapshot['answers']['brand'], 'Apple (iPhone)')
+
+        # Verify normalized attributes extracted
+        self.assertEqual(lost.normalized_attributes.get('brand'), 'Apple (iPhone)')
+        self.assertEqual(lost.normalized_attributes.get('main_color'), 'Black / Space Grey')
+
+    def test_historical_question_stability(self):
+        # Create a report with a specific question snapshot
+        lost = LostItem.objects.create(
+            user=self.student,
+            category='Laptop',
+            description='Dell laptop left in lab',
+            original_answers={
+                'version': '2025.0',  # Older version
+                'category': 'Laptop',
+                'questions': [
+                    {'key': 'brand', 'label': 'Brand', 'options': ['Dell', 'HP'], 'selected': 'Dell'}
+                ],
+                'answers': {'brand': 'Dell'}
+            },
+            status=ItemStatus.REPORTED
+        )
+        self.auth_student()
+        resp = self.client.get(f'/api/items/lost-items/{lost.id}/')
+        self.assertEqual(resp.status_code, http_status.HTTP_200_OK)
+        # Ensure the older snapshot version and questions were preserved without modification
+        self.assertEqual(resp.data['original_answers']['version'], '2025.0')
+        self.assertEqual(len(resp.data['original_answers']['questions']), 1)
+        self.assertEqual(resp.data['original_answers']['answers']['brand'], 'Dell')
+

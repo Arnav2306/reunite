@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../context/ThemeContext';
 import { api } from '../services/api';
 import type { AppNotification } from '../types/recovery';
-import { Menu, X, Bell, User as UserIcon, LogOut, ChevronRight, Search, Camera } from 'lucide-react';
+import { Menu, X, Bell, User as UserIcon, LogOut, ChevronRight, Search, Camera, Sun, Moon, Shield } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -169,23 +171,55 @@ export const Navbar: React.FC = () => {
             ) : (
               <div className="flex items-center gap-2">
                 <Link
+                  to="/login?portal=staff"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  title="Staff &amp; Custodian Access"
+                >
+                  <Shield className="w-3.5 h-3.5 text-slate-500" />
+                  Staff Desk
+                </Link>
+                <Link
                   to="/login"
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 rounded-lg hover:bg-slate-50 transition-colors"
+                  className="px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Log in
                 </Link>
                 <Link
                   to="/signup"
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors"
+                  className="px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors"
                 >
                   Get Started
                 </Link>
               </div>
             )}
+
+            {/* Dark / Light Theme Toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 ml-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4.5 h-4.5 text-amber-400" />
+              ) : (
+                <Moon className="w-4.5 h-4.5 text-slate-600" />
+              )}
+            </button>
           </div>
 
-          {/* Mobile menu button */}
-          <div className="flex items-center gap-2 lg:hidden">
+          {/* Mobile menu button & theme toggle */}
+          <div className="flex items-center gap-1 lg:hidden">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 text-slate-500 hover:text-slate-900 rounded-lg transition-colors"
+              title="Toggle theme"
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? <Sun className="w-4.5 h-4.5 text-amber-400" /> : <Moon className="w-4.5 h-4.5" />}
+            </button>
             {isAuthenticated && unreadCount > 0 && (
               <Link to="/notifications" className="relative p-2 text-slate-500 hover:text-slate-900">
                 <Bell className="w-5 h-5" />

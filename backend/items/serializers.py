@@ -48,6 +48,8 @@ class FoundItemAdminSerializer(serializers.ModelSerializer):
             'collection_point_details',
             'status',
             'risk_tier',
+            'cannot_carry',
+            'cannot_carry_details',
             'is_published',
             'published_at',
             # Private identification & verification fields (Admin/Custodian only)
@@ -69,6 +71,11 @@ class FoundItemAdminSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'public_id', 'created_at', 'updated_at', 'published_at']
+
+    def validate_collection_point(self, value):
+        if value and getattr(value, 'status', None) != 'ACTIVE':
+            raise serializers.ValidationError("Unavailable stations cannot be selected for a deposit.")
+        return value
 
     def get_images(self, obj):
         content_type = ContentType.objects.get_for_model(FoundItem)
@@ -96,6 +103,8 @@ class AvailableItemPublicSerializer(serializers.ModelSerializer):
             'collection_location',
             'status',
             'risk_tier',
+            'cannot_carry',
+            'cannot_carry_details',
             'is_published',
             'published_at',
             'images',
@@ -208,6 +217,8 @@ class StudentFoundItemSerializer(serializers.ModelSerializer):
             'collection_point',
             'collection_point_details',
             'risk_tier',
+            'cannot_carry',
+            'cannot_carry_details',
             'ai_metadata',
             'student_corrections',
             'is_published',
@@ -219,6 +230,11 @@ class StudentFoundItemSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'public_id', 'is_published', 'status', 'source', 'created_at', 'updated_at']
+
+    def validate_collection_point(self, value):
+        if value and getattr(value, 'status', None) != 'ACTIVE':
+            raise serializers.ValidationError("Unavailable stations cannot be selected for a deposit.")
+        return value
 
     def get_images(self, obj):
         content_type = ContentType.objects.get_for_model(FoundItem)

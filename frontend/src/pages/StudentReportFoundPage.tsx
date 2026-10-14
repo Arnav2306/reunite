@@ -90,8 +90,10 @@ export const StudentReportFoundPage: React.FC = () => {
   // Track which fields were AI-suggested vs user-edited
   const [aiSuggestedFields, setAiSuggestedFields] = useState<Set<string>>(new Set());
 
-  // --- Step 3: Station ---
+  // --- Step 3: Station & Cannot-Carry Mode ---
   const [collectionPointId, setCollectionPointId] = useState('');
+  const [cannotCarry, setCannotCarry] = useState(false);
+  const [cannotCarryDetails, setCannotCarryDetails] = useState('');
 
   // --- Submission ---
   const [formError, setFormError] = useState<string | null>(null);
@@ -197,7 +199,13 @@ export const StudentReportFoundPage: React.FC = () => {
       formData.append('found_location', foundLocation);
       formData.append('found_date', foundDate);
       formData.append('risk_tier', String(riskTier));
-      if (collectionPointId) formData.append('collection_point', collectionPointId);
+      formData.append('cannot_carry', cannotCarry ? 'true' : 'false');
+      if (cannotCarry && cannotCarryDetails) {
+        formData.append('cannot_carry_details', cannotCarryDetails);
+      }
+      if (!cannotCarry && collectionPointId) {
+        formData.append('collection_point', collectionPointId);
+      }
       if (imageFile) formData.append('image', imageFile);
 
       const item = await apiRequest<{ id: number; public_id: string }>('/api/items/student-found/', {
@@ -714,18 +722,60 @@ export const StudentReportFoundPage: React.FC = () => {
       {step === 3 && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Where will you drop it off?</h2>
+            <h2 className="text-lg font-bold text-slate-900">Custodial Handover or Drop-off</h2>
             <p className="text-sm text-slate-500 mt-1">
-              Choose the nearest Reunite collection station where you'll hand the item over.
+              Choose a campus collection station, or flag that the item cannot be carried.
             </p>
           </div>
 
-          {collectionPoints.length === 0 ? (
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
-              <p className="text-sm text-slate-500">No collection stations found.</p>
-              <p className="text-xs text-slate-400 mt-1">You can skip this step and our team will contact you.</p>
+          {/* Cannot-carry mode selector */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-800">Cannot carry to a collection desk?</p>
+                <p className="text-xs text-slate-500">If the item is too heavy, bulky, or immovable, request custodial pickup.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCannotCarry(!cannotCarry);
+                  if (!cannotCarry) setCollectionPointId('');
+                }}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                  cannotCarry
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                {cannotCarry ? '✓ Cannot Carry Active' : 'Flag Cannot Carry'}
+              </button>
             </div>
-          ) : (
+
+            {cannotCarry && (
+              <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Exact On-Site Location &amp; Landmark for Staff Retrieval <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={cannotCarryDetails}
+                  onChange={(e) => setCannotCarryDetails(e.target.value)}
+                  placeholder="e.g. Science Block Ground Floor, near Lab 102 water dispenser"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white"
+                />
+              </div>
+            )}
+          </div>
+
+          {!cannotCarry && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Available Campus Stations</p>
+              {collectionPoints.length === 0 ? (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <p className="text-sm text-slate-500">No collection stations found.</p>
+                  <p className="text-xs text-slate-400 mt-1">You can skip this step and our team will contact you.</p>
+                </div>
+              ) : (
             <div className="space-y-2.5">
               {collectionPoints.filter(cp => cp.status === 'ACTIVE' || !cp.status).map(cp => (
                 <button
@@ -765,13 +815,15 @@ export const StudentReportFoundPage: React.FC = () => {
                   </div>
                 </button>
               ))}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
+        )}
 
           <div className="p-3.5 bg-amber-50 border border-amber-100 rounded-xl">
             <p className="text-xs text-amber-700">
-              <strong>Can't find a station?</strong> You can still submit the report and our team will
-              reach out about drop-off. Station selection is optional.
+              <strong>Need assistance?</strong> You can still submit the report and our custodial team will
+              reach out about physical retrieval or drop-off.
             </p>
           </div>
         </div>
