@@ -7,7 +7,7 @@ services:
     startCommand: python manage.py migrate --no-input && gunicorn reunite_backend.wsgi:application
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.9
+        value: 3.12.7
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_SECRET_KEY
