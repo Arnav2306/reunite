@@ -152,6 +152,9 @@ CORS_ALLOWED_ORIGINS=https://<your-vercel-frontend>.vercel.app
 CSRF_TRUSTED_ORIGINS=https://<your-project>.up.railway.app
 GEMINI_API_KEY=<your-gemini-api-key-here>
 GEMINI_MODEL=gemini-3.5-flash-lite
+CLOUDINARY_CLOUD_NAME=<your-cloudinary-cloud-name>
+CLOUDINARY_API_KEY=<your-cloudinary-api-key>
+CLOUDINARY_API_SECRET=<your-cloudinary-api-secret>
 ```
 
 > **Generate a strong secret key:**
