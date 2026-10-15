@@ -32,7 +32,7 @@ def get_ai_configuration_status():
     """Returns safe boolean flags for provider configuration without revealing keys."""
     gemini_key = os.environ.get('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', '')
     openai_key = os.environ.get('OPENAI_API_KEY') or getattr(settings, 'OPENAI_API_KEY', '')
-    gemini_model = os.environ.get('GEMINI_MODEL') or getattr(settings, 'GEMINI_MODEL', 'gemini-3.8-flash')
+    gemini_model = os.environ.get('GEMINI_MODEL') or getattr(settings, 'GEMINI_MODEL', 'gemini-3.5-flash-lite')
     openai_model = os.environ.get('OPENAI_MODEL') or getattr(settings, 'OPENAI_MODEL', 'gpt-4o-mini')
 
     return {
@@ -46,7 +46,7 @@ def get_ai_configuration_status():
 
 def call_gemini_vision(gemini_key: str, encoded_image: str, content_type: str, prompt: str):
     """Calls Google Gemini Vision API."""
-    model_name = os.environ.get('GEMINI_MODEL') or getattr(settings, 'GEMINI_MODEL', 'gemini-3.8-flash')
+    model_name = os.environ.get('GEMINI_MODEL') or getattr(settings, 'GEMINI_MODEL', 'gemini-3.5-flash-lite')
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
     payload = {
         "contents": [
