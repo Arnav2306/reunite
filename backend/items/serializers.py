@@ -13,10 +13,36 @@ class ItemImageSerializer(serializers.ModelSerializer):
     def get_image_url(self, obj):
         if not obj.image:
             return None
+        name = obj.image.name or ''
+        # If the stored name is already an absolute URL (some storage backends
+        # store the full URL), return it directly.
+        if name.startswith('http://') or name.startswith('https://'):
+            return name
+
+        storage = getattr(obj.image, 'storage', None)
+        storage_name = storage.__class__.__name__ if storage else ''
+
+        # Build a direct Cloudinary delivery URL from the public_id (stored name)
+        # when Cloudinary storage is active, ensuring legacy and prefixed keys resolve.
+        if 'Cloudinary' in storage_name:
+            try:
+                import cloudinary
+                resource = cloudinary.CloudinaryResource(
+                    name, default_resource_type='image'
+                )
+                return resource.build_url(secure=True)
+            except Exception:
+                pass
+
+        # Fallback (or local FileSystemStorage): use storage.url()
         request = self.context.get('request')
-        if request is not None:
-            return request.build_absolute_uri(obj.image.url)
-        return obj.image.url
+        try:
+            url = obj.image.url
+        except Exception:
+            return None
+        if request is not None and not (url.startswith('http://') or url.startswith('https://')):
+            return request.build_absolute_uri(url)
+        return url
 
 class CollectionPointSimpleSerializer(serializers.ModelSerializer):
     class Meta:

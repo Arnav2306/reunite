@@ -440,6 +440,30 @@ export const StudentReportFoundPage: React.FC = () => {
             Your found item report has been submitted. A campus custodian will review it and list it
             in the Found Items catalog so the owner can claim it.
           </p>
+
+          {/* Reported Item Summary Card with Photo */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-left flex items-center gap-4">
+            {imagePreview ? (
+              <img
+                src={imagePreview}
+                alt={title || 'Reported found item'}
+                className="w-20 h-20 object-cover rounded-xl border border-slate-200 shrink-0"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-600 shrink-0 font-bold text-xs">
+                FOUND
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-bold uppercase tracking-wide bg-teal-100 text-teal-800 px-2 py-0.5 rounded">
+                Submitted
+              </span>
+              <h3 className="font-bold text-slate-900 text-sm mt-1 truncate">{title || category}</h3>
+              <p className="text-xs text-slate-500 truncate">{category} · {foundLocation || 'Campus premises'}</p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">ID: {successId.substring(0, 8)}</p>
+            </div>
+          </div>
+
           {selectedStation && (
             <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl text-left">
               <p className="text-xs font-semibold text-teal-700 mb-1 flex items-center gap-1">

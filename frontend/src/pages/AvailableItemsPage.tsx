@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, ApiError } from '../services/api';
+import { api, ApiError, getMediaUrl } from '../services/api';
 import type { AvailableItem } from '../types/recovery';
 import { Search, ShieldAlert, CheckCircle2, PackageCheck, AlertCircle, Loader2, X } from 'lucide-react';
 
@@ -198,10 +198,18 @@ export const AvailableItemsPage: React.FC = () => {
                 {item.images && item.images.length > 0 ? (
                   <div className="w-full h-48 bg-slate-100 border-b border-slate-100 overflow-hidden relative">
                     <img
-                      src={item.images[0].image_url || item.images[0].image}
+                      src={getMediaUrl(item.images[0].image_url || item.images[0].image)}
                       alt={`Photograph of found ${item.title || item.category}`}
                       className="w-full h-full object-cover"
                       loading="lazy"
+                      onError={(e) => {
+                        // Fallback if image fails to load
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                        const parent = (e.currentTarget as HTMLElement).parentElement;
+                        if (parent) {
+                          parent.innerHTML = '<div class="w-full h-48 bg-slate-100 flex flex-col items-center justify-center text-slate-400 text-xs font-medium">Image unavailable</div>';
+                        }
+                      }}
                     />
                   </div>
                 ) : (

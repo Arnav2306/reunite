@@ -122,3 +122,14 @@ export const api = {
   delete: <T>(endpoint: string, options?: RequestOptions) =>
     apiRequest<T>(endpoint, { ...options, method: 'DELETE' }),
 };
+
+export function getMediaUrl(pathOrUrl?: string | null): string {
+  if (!pathOrUrl) return '';
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://') || pathOrUrl.startsWith('blob:') || pathOrUrl.startsWith('data:')) {
+    return pathOrUrl;
+  }
+  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  const cleanPath = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return apiBase ? `${apiBase}${cleanPath}` : cleanPath;
+}
+

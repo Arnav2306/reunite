@@ -182,25 +182,53 @@ else:
 STATIC_URL = 'static/'
 STATIC_ROOT = os.environ.get('STATIC_ROOT', os.path.join(BASE_DIR, 'staticfiles'))
 
-# WhiteNoise: serve compressed static files efficiently in production
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
+MEDIA_ROOT = os.environ.get('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
 
 # Cloudinary Storage for media uploads (item images, etc.)
 CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
 CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY', '')
 CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET', '')
 
+# Local media storage is strictly disallowed in production/staging to prevent data loss across container restarts.
+# In local development only, it can be explicitly chosen by setting USE_LOCAL_STORAGE=True alongside DJANGO_DEBUG=True.
+USE_LOCAL_STORAGE = os.environ.get('USE_LOCAL_STORAGE', 'False').lower() in ('true', '1', 'yes')
+
+import sys
+_is_collectstatic = 'collectstatic' in sys.argv
+_is_test = 'test' in sys.argv
+
 if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
         'API_KEY': CLOUDINARY_API_KEY,
         'API_SECRET': CLOUDINARY_API_SECRET,
+        'PREFIX': 'reunite',
     }
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    MEDIA_URL = f'https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/'
+    STORAGES = {
+        'default': {
+            'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
+elif (DEBUG and USE_LOCAL_STORAGE) or _is_collectstatic or _is_test:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
 else:
-    MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
-    MEDIA_ROOT = os.environ.get('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        "Cloudinary configuration missing: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET "
+        "must be set in environment variables. Container-local storage is not permitted in production/staging. "
+        "For offline development only, set USE_LOCAL_STORAGE=True with DJANGO_DEBUG=True."
+    )
 
 # ─────────────────────────────────────────────
 # Password validation

@@ -217,6 +217,30 @@ export const RegisterFoundItemPage: React.FC = () => {
           <p className="text-sm text-slate-600">
             The found item has been saved. Students can now find it in the Available Items catalog (if published).
           </p>
+
+          {/* Item Card with Photo Preview */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-left flex items-center gap-4 max-w-md mx-auto">
+            {imagePreview ? (
+              <img
+                src={imagePreview}
+                alt={title || 'Registered found item'}
+                className="w-20 h-20 object-cover rounded-xl border border-slate-200 shrink-0"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-600 shrink-0 font-bold text-xs">
+                FOUND
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                Registered
+              </span>
+              <h3 className="font-bold text-slate-900 text-sm mt-1 truncate">{title || category}</h3>
+              <p className="text-xs text-slate-500 truncate">{category} · {foundLocation || 'Campus premises'}</p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">ID: {successId.substring(0, 8)}</p>
+            </div>
+          </div>
+
           <div className="flex items-center justify-center gap-3 pt-4">
             <button
               onClick={() => navigate('/dashboard')}

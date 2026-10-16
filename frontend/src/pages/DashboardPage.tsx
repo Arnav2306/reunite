@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
-import { api } from '../services/api';
-import type { AdminStats, Claim, LostItem, MatchItem, AdminFoundItem } from '../types/recovery';
+import { api, getMediaUrl } from '../services/api';
+import type { AdminStats, Claim, LostItem, MatchItem, AdminFoundItem, AvailableItem } from '../types/recovery';
 import {
   Search, Camera, ArrowRight, Clock,
   PlusCircle, CheckCircle2, Package,
@@ -156,6 +156,15 @@ export const DashboardPage: React.FC = () => {
     queryFn: async () => {
       const res = await api.get<MatchItem[] | { results: MatchItem[] }>('/api/items/matches/');
       return Array.isArray(res) ? res : res.results || [];
+    },
+    enabled: !isStaff,
+  });
+
+  const { data: foundReports = [] } = useQuery<AvailableItem[]>({
+    queryKey: ['my-found-reports'],
+    queryFn: async () => {
+      const res = await api.get<AvailableItem[] | { results: AvailableItem[] }>('/api/items/student-found/');
+      return Array.isArray(res) ? res : (res as { results: AvailableItem[] }).results || [];
     },
     enabled: !isStaff,
   });
@@ -317,7 +326,7 @@ export const DashboardPage: React.FC = () => {
             </Link>
           </div>
 
-          {lostReports.length === 0 && claims.length === 0 ? (
+          {lostReports.length === 0 && claims.length === 0 && foundReports.length === 0 ? (
             /* Honest Useful Empty State */
             <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center space-y-4">
               <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
@@ -349,7 +358,7 @@ export const DashboardPage: React.FC = () => {
               {/* Lost Item Recovery Cases */}
               {lostReports.map((report) => {
                 const stageIdx = getLostItemStageIndex(report);
-                const primaryImage = report.images && report.images.length > 0 ? report.images[0].image_url || report.images[0].image : null;
+                const primaryImage = report.images && report.images.length > 0 ? getMediaUrl(report.images[0].image_url || report.images[0].image) : null;
 
                 return (
                   <div
@@ -499,6 +508,52 @@ export const DashboardPage: React.FC = () => {
                             </div>
                           );
                         })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Student Found Item Reports */}
+              {foundReports.map((found) => {
+                const primaryImage = found.images && found.images.length > 0 ? getMediaUrl(found.images[0].image_url || found.images[0].image) : null;
+                return (
+                  <div
+                    key={`found-${found.public_id}`}
+                    className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4 hover:border-slate-300 transition-all"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {primaryImage ? (
+                          <img src={primaryImage} alt={found.title || found.category} className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-600 shrink-0 font-bold text-sm">
+                            {found.category.substring(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wide bg-teal-100 text-teal-800 px-2 py-0.5 rounded">
+                              Found Report
+                            </span>
+                            <span className="text-xs text-slate-400 font-mono">
+                              ID: {found.public_id.substring(0, 8)}
+                            </span>
+                          </div>
+                          <h3 className="font-bold text-slate-900 text-sm mt-0.5">{found.title || found.description || found.category}</h3>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <span className="text-xs text-slate-500">
+                          {found.found_location ? `Found at ${found.found_location}` : 'Campus'}
+                        </span>
+                        <Link
+                          to="/found-items"
+                          className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors"
+                        >
+                          View in Catalog
+                        </Link>
                       </div>
                     </div>
                   </div>
@@ -1089,6 +1144,18 @@ export const DashboardPage: React.FC = () => {
                   <p className="text-slate-600 mt-1 pt-1 border-t border-slate-200">
                     {caseDetail.item.description}
                   </p>
+                  {caseDetail.item.images && caseDetail.item.images.length > 0 && (
+                    <div className="pt-2 flex items-center gap-2">
+                      {caseDetail.item.images.map((img: any) => (
+                        <img
+                          key={img.id}
+                          src={getMediaUrl(img.image_url || img.image)}
+                          alt="Case item"
+                          className="w-20 h-20 object-cover rounded-xl border border-slate-200"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Section 11.2: AI Analysis */}

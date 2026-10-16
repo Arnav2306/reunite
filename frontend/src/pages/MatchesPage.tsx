@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '../services/api';
+import { api, ApiError, getMediaUrl } from '../services/api';
 import type { MatchItem, LostItem } from '../types/recovery';
 import {
   Sparkles, CheckCircle2, AlertCircle, ShieldAlert,
@@ -232,7 +232,7 @@ export const MatchesPage: React.FC = () => {
                       : 'bg-slate-100 text-slate-700 border-slate-200';
 
                     const primaryImage = found.images && found.images.length > 0
-                      ? found.images[0].image_url || found.images[0].image
+                      ? getMediaUrl(found.images[0].image_url || found.images[0].image)
                       : null;
 
                     return (
