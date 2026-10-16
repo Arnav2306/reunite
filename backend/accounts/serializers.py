@@ -80,6 +80,40 @@ class SignupSerializer(serializers.Serializer):
         user = User.objects.create_user(email=email, password=password, **validated_data)
         return user
 
+def find_user_by_identifier(identifier: str):
+    """
+    Find user by email, personal_email, or mobile number with normalization:
+    - Case-insensitive email and personal_email matching
+    - Mobile matching with whitespace/dash/parentheses stripping
+    - Handles variations with or without country code (+91, 91, 0) and 10-digit suffixes
+    """
+    if not identifier:
+        return None
+    cleaned = identifier.strip()
+    import re
+    phone_candidates = {cleaned}
+    if any(c.isdigit() for c in cleaned):
+        digits_only = re.sub(r'[\s\-\(\)]', '', cleaned)
+        phone_candidates.add(digits_only)
+        phone_candidates.add(digits_only.lstrip('0'))
+        if digits_only.startswith('+91'):
+            phone_candidates.add(digits_only[3:])
+            phone_candidates.add('91' + digits_only[3:])
+        elif digits_only.startswith('91') and len(digits_only) > 10:
+            phone_candidates.add(digits_only[2:])
+            phone_candidates.add('+' + digits_only)
+        elif len(digits_only) == 10:
+            phone_candidates.add('+91' + digits_only)
+            phone_candidates.add('91' + digits_only)
+        if len(digits_only) >= 10:
+            phone_candidates.add(digits_only[-10:])
+
+    return User.objects.filter(
+        Q(email__iexact=cleaned)
+        | Q(personal_email__iexact=cleaned)
+        | Q(mobile_number__in=phone_candidates)
+    ).first()
+
 class LoginSerializer(serializers.Serializer):
     identifier = serializers.CharField(help_text="Email or mobile number")
     password = serializers.CharField(write_only=True)
@@ -91,9 +125,7 @@ class LoginSerializer(serializers.Serializer):
         if not identifier or not password:
             raise serializers.ValidationError('Both identifier and password are required.')
 
-        user = User.objects.filter(
-            Q(email__iexact=identifier) | Q(mobile_number=identifier)
-        ).first()
+        user = find_user_by_identifier(identifier)
 
         if not user or not user.check_password(password):
             raise serializers.ValidationError('Invalid email/mobile number or password.')
@@ -102,4 +134,21 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('This user account is inactive.')
 
         attrs['user'] = user
+        return attrs
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    identifier = serializers.CharField(help_text="Registered email or mobile number")
+
+    def validate_identifier(self, value):
+        return value.strip()
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=6)
+    new_password_confirm = serializers.CharField(write_only=True, min_length=6)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError({'new_password_confirm': 'Passwords do not match.'})
         return attrs

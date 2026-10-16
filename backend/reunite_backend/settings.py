@@ -145,25 +145,50 @@ WSGI_APPLICATION = 'reunite_backend.wsgi.application'
 # Database
 # ─────────────────────────────────────────────
 # Default: SQLite for development.
-# In production, set DATABASE_URL (e.g. postgres://user:password@host:5432/dbname)
-# or individual DB_* variables (DB_ENGINE, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT).
+# In production, DATABASE_URL must be configured with Railway PostgreSQL.
+import sys
+_is_collectstatic = 'collectstatic' in sys.argv
+_is_test = 'test' in sys.argv
+
 _database_url = os.environ.get('DATABASE_URL', '')
 if _database_url:
-    from urllib.parse import urlparse
+    from urllib.parse import urlparse, unquote
     _parsed_db = urlparse(_database_url)
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql' if _parsed_db.scheme in ('postgres', 'postgresql') else 'django.db.backends.sqlite3',
-            'NAME': _parsed_db.path.lstrip('/') if _parsed_db.path else '',
-            'USER': _parsed_db.username or '',
-            'PASSWORD': _parsed_db.password or '',
-            'HOST': _parsed_db.hostname or 'localhost',
-            'PORT': str(_parsed_db.port or 5432),
+    if _parsed_db.scheme in ('postgres', 'postgresql'):
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': unquote(_parsed_db.path.lstrip('/') if _parsed_db.path else ''),
+                'USER': unquote(_parsed_db.username or ''),
+                'PASSWORD': unquote(_parsed_db.password or ''),
+                'HOST': _parsed_db.hostname or 'localhost',
+                'PORT': str(_parsed_db.port or 5432),
+            }
         }
-    }
+    else:
+        if not DEBUG and not _is_collectstatic and not _is_test:
+            from django.core.exceptions import ImproperlyConfigured
+            raise ImproperlyConfigured(
+                f"Invalid DATABASE_URL scheme '{_parsed_db.scheme}'. PostgreSQL is required in production (e.g. postgres://user:pass@host:5432/dbname)."
+            )
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': str(BASE_DIR / 'db.sqlite3'),
+            }
+        }
 else:
     _db_engine = os.environ.get('DB_ENGINE', 'django.db.backends.sqlite3')
     _db_name = os.environ.get('DB_NAME', str(BASE_DIR / 'db.sqlite3'))
+
+    # Strictly reject container-local SQLite in production/staging to avoid data/account loss across restarts
+    if not DEBUG and not _is_collectstatic and not _is_test:
+        if _db_engine == 'django.db.backends.sqlite3':
+            from django.core.exceptions import ImproperlyConfigured
+            raise ImproperlyConfigured(
+                "Production database configuration missing: DATABASE_URL must be configured with a PostgreSQL "
+                "connection string in production/staging. Ephemeral container-local SQLite is strictly prohibited when DJANGO_DEBUG=False."
+            )
 
     DATABASES = {
         'default': {
@@ -193,10 +218,6 @@ CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET', '')
 # Local media storage is strictly disallowed in production/staging to prevent data loss across container restarts.
 # In local development only, it can be explicitly chosen by setting USE_LOCAL_STORAGE=True alongside DJANGO_DEBUG=True.
 USE_LOCAL_STORAGE = os.environ.get('USE_LOCAL_STORAGE', 'False').lower() in ('true', '1', 'yes')
-
-import sys
-_is_collectstatic = 'collectstatic' in sys.argv
-_is_test = 'test' in sys.argv
 
 if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
     CLOUDINARY_STORAGE = {
