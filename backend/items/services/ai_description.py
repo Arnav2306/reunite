@@ -14,7 +14,7 @@ VALUABLE_CATEGORIES = {
 # Categories that require Vehicle Keys matching treatment
 VEHICLE_KEY_CATEGORY_TERMS = {
     'vehicle keys', 'vehicle key', 'car key', 'motorcycle key', 'scooter key',
-    'key fob', 'remote key', 'smart key', 'proximity key'
+    'scooty key', 'scooty', 'key fob', 'remote key', 'smart key', 'proximity key'
 }
 
 def clean_json_text(text: str) -> str:

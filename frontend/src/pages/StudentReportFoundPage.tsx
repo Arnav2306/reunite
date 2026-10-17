@@ -213,7 +213,7 @@ export const StudentReportFoundPage: React.FC = () => {
         if (s.suggested_category && (!category || aiSuggestedFields.has('category'))) {
           const sugCatLower = (s.suggested_category || '').toLowerCase();
           // Specific vehicle key terms must map to Vehicle Keys, not generic Keys & Badges
-          const vehicleKeyTerms = ['vehicle key', 'vehicle keys', 'car key', 'motorcycle key', 'scooter key', 'key fob', 'remote key', 'smart key', 'proximity key'];
+          const vehicleKeyTerms = ['vehicle key', 'vehicle keys', 'car key', 'motorcycle key', 'scooter key', 'scooty key', 'scooty', 'key fob', 'remote key', 'smart key', 'proximity key'];
           const isVehicleKey = vehicleKeyTerms.some(t => sugCatLower.includes(t));
           let matched: string | undefined;
           if (isVehicleKey) {

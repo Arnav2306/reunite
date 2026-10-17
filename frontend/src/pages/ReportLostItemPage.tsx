@@ -594,7 +594,7 @@ const FALLBACK_QUESTION_BANK: Record<string, CategoryQuestion[]> = {
       key: 'vehicle_type',
       label: 'What type of vehicle was the key for?',
       type: 'choice',
-      options: ['Motorcycle', 'Scooter', 'Car', 'Other vehicle', 'Other', 'Not sure'],
+      options: ['Motorcycle', 'Scooty', 'Car', 'Other vehicle', 'Other', 'Not sure'],
       allow_detail: true,
       detail_placeholder: 'Specify vehicle make or model if known'
     },
@@ -650,6 +650,8 @@ const CATEGORY_MAP: Record<string, string> = {
   'motorcycle key': 'Vehicle Keys',
   'motorbike key': 'Vehicle Keys',
   'scooter key': 'Vehicle Keys',
+  'scooty key': 'Vehicle Keys',
+  'scooty': 'Vehicle Keys',
   'car key': 'Vehicle Keys',
   'car keys': 'Vehicle Keys',
   'bike key': 'Vehicle Keys',

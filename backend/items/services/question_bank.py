@@ -1126,7 +1126,7 @@ CATEGORY_QUESTION_BANK: Dict[str, List[Dict[str, Any]]] = {
             'type': 'choice',
             'options': [
                 'Motorcycle',
-                'Scooter',
+                'Scooty',
                 'Car',
                 'Other vehicle',
                 'Other',
@@ -1296,6 +1296,8 @@ CATEGORY_ALIASES: Dict[str, str] = {
     'motorcycle key': 'Vehicle Keys',
     'motorbike key': 'Vehicle Keys',
     'scooter key': 'Vehicle Keys',
+    'scooty key': 'Vehicle Keys',
+    'scooty': 'Vehicle Keys',
     'car key': 'Vehicle Keys',
     'car keys': 'Vehicle Keys',
     'bike key': 'Vehicle Keys',
@@ -1373,7 +1375,7 @@ def resolve_category_key(category_name: str) -> str:
     # 2. Explicit Vehicle Keys terms — must be checked BEFORE generic 'key' substring matching
     vehicle_key_terms = {
         'vehicle keys', 'vehicle key', 'vehicle_keys',
-        'motorcycle key', 'motorbike key', 'scooter key',
+        'motorcycle key', 'motorbike key', 'scooter key', 'scooty key', 'scooty',
         'car key', 'car keys', 'bike key', 'key fob', 'key fobs',
         'remote key', 'smart key', 'proximity key',
     }

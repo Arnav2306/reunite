@@ -1134,7 +1134,7 @@ class VehicleKeysCategoryTests(BaseItemFixture):
     def test_vehicle_keys_vehicle_type_options(self):
         from items.services.question_bank import CATEGORY_QUESTION_BANK
         vt = next(q for q in CATEGORY_QUESTION_BANK['Vehicle Keys'] if q['key'] == 'vehicle_type')
-        for expected in ['Motorcycle', 'Scooter', 'Car', 'Other vehicle', 'Not sure']:
+        for expected in ['Motorcycle', 'Scooty', 'Car', 'Other vehicle', 'Not sure']:
             self.assertIn(expected, vt['options'])
 
     def test_vehicle_keys_appears_in_api_categories(self):
@@ -1169,7 +1169,7 @@ class VehicleKeysCategoryTests(BaseItemFixture):
     def test_vehicle_keys_aliases_resolve_correctly(self):
         from items.services.question_bank import resolve_category_key
         for alias in ['vehicle keys', 'vehicle key', 'vehicle_keys', 'car key', 'car keys',
-                      'motorcycle key', 'scooter key', 'key fob', 'key fobs', 'remote key',
+                      'motorcycle key', 'scooter key', 'scooty key', 'scooty', 'key fob', 'key fobs', 'remote key',
                       'smart key', 'proximity key']:
             resolved = resolve_category_key(alias)
             self.assertEqual(resolved, 'Vehicle Keys',
@@ -1209,9 +1209,9 @@ class VehicleKeysCategoryTests(BaseItemFixture):
         self.auth_student()
         resp = self.client.post('/api/items/lost-items/', {
             'category': 'Vehicle Keys',
-            'description': 'Lost Honda scooter key',
+            'description': 'Lost Honda scooty key',
             'original_answers': {
-                'vehicle_type': 'Scooter',
+                'vehicle_type': 'Scooty',
                 'key_type': 'Traditional metal key',
                 'key_appearance': 'Mainly silver or metallic',
                 'distinguishing_feature': 'No obvious distinctive feature',
@@ -1223,7 +1223,7 @@ class VehicleKeysCategoryTests(BaseItemFixture):
         lost = LI2.objects.get(id=resp.data['id'])
         attrs = lost.normalized_attributes
         self.assertIn('vehicle_type', attrs)
-        self.assertEqual(attrs['vehicle_type'], 'Scooter')
+        self.assertEqual(attrs['vehicle_type'], 'Scooty')
         self.assertEqual(attrs['key_type'], 'Traditional metal key')
 
     def test_vehicle_keys_historical_snapshot_preserved(self):
@@ -1252,14 +1252,14 @@ class VehicleKeysCategoryTests(BaseItemFixture):
     def test_vehicle_keys_matches_same_category(self):
         lost_vk = LostItem(
             category='Vehicle Keys',
-            description='Black Honda Activa scooter key fob with keychain',
+            description='Black Honda Activa scooty key fob with keychain',
             original_answers={'lost_location': 'Block A Parking', 'lost_date': '2026-10-12'},
-            normalized_attributes={'vehicle_type': 'Scooter', 'key_type': 'Remote key fob'},
+            normalized_attributes={'vehicle_type': 'Scooty', 'key_type': 'Remote key fob'},
         )
         found_vk = FoundItem(
             category='Vehicle Keys',
-            title='Scooter Key Fob',
-            description='Black scooter key found near Block A entrance',
+            title='Scooty Key Fob',
+            description='Black scooty key found near Block A entrance',
             found_date=None,
             found_location='Block A',
         )
