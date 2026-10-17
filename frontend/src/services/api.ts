@@ -57,8 +57,12 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
   }
 
   // Prepend VITE_API_URL if configured, otherwise use relative path (proxied in dev, same-origin in prod)
-  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  const rawApiBase = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  // Prevent duplicate /api if VITE_API_URL already contains the /api prefix
+  const apiBase = (rawApiBase.endsWith('/api') && normalizedEndpoint.startsWith('/api/'))
+    ? rawApiBase.slice(0, -4)
+    : rawApiBase;
   const url = apiBase ? `${apiBase}${normalizedEndpoint}` : normalizedEndpoint;
 
   const response = await fetch(url, {
@@ -128,8 +132,11 @@ export function getMediaUrl(pathOrUrl?: string | null): string {
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://') || pathOrUrl.startsWith('blob:') || pathOrUrl.startsWith('data:')) {
     return pathOrUrl;
   }
-  const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  const rawApiBase = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
   const cleanPath = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  const apiBase = (rawApiBase.endsWith('/api') && cleanPath.startsWith('/api/'))
+    ? rawApiBase.slice(0, -4)
+    : rawApiBase;
   return apiBase ? `${apiBase}${cleanPath}` : cleanPath;
 }
 
