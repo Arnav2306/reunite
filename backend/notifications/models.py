@@ -15,6 +15,13 @@ class Notification(models.Model):
     read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Deep-link: frontend route this notification should navigate to (e.g. '/matches')
+    action_url = models.CharField(max_length=500, blank=True, default='')
+
+    # Deduplication anchor: stores the public_id of the primary related object
+    # (e.g. lost_item.public_id for MATCH_FOUND) to prevent duplicate notifications
+    related_object_id = models.CharField(max_length=36, blank=True, default='', db_index=True)
+
     class Meta:
         ordering = ['-created_at']
         verbose_name = 'Notification'

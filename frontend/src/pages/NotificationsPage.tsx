@@ -126,8 +126,10 @@ export const NotificationsPage: React.FC = () => {
     if (!notification.read) {
       markReadMutation.mutate(notification.public_id);
     }
-    if (path) {
-      navigate(path);
+    // Prefer the server-supplied action_url (deep-link) over the generic meta path
+    const destination = notification.action_url || path;
+    if (destination) {
+      navigate(destination);
     }
   };
 
@@ -377,7 +379,7 @@ export const NotificationsPage: React.FC = () => {
 
                   {/* Right Actions: Mark read + Context Action */}
                   <div className="flex items-center sm:flex-col sm:items-end justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
-                    {meta.actionPath && (
+                    {(n.action_url || meta.actionPath) && (
                       <button
                         type="button"
                         onClick={() => handleActionClick(n, meta.actionPath)}

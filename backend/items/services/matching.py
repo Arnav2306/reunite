@@ -213,6 +213,10 @@ def evaluate_lost_item_matches(lost_item: LostItem, notify: bool = True) -> list
     """
     Evaluates a LostItem against all published FoundItems.
     Creates or updates Match records and triggers notification for high-confidence matches.
+
+    Deduplication: only one MATCH_FOUND notification is ever sent per lost report.
+    If a notification already exists for this lost_item (keyed on related_object_id),
+    no further notifications are sent even if matching is re-run.
     """
     matches_created_or_updated = []
     found_items = FoundItem.objects.filter(is_published=True)
@@ -247,15 +251,31 @@ def evaluate_lost_item_matches(lost_item: LostItem, notify: bool = True) -> list
             lost_item.save(update_fields=['status', 'updated_at'])
 
         if notify:
-            best_match, best_score = max(high_matches, key=lambda x: x[1])
-            label = get_match_label(best_score)
-            Notification.objects.create(
-                public_id=str(uuid.uuid4()),
+            # Deduplication: one notification per lost report
+            already_notified = Notification.objects.filter(
                 user=lost_item.user,
-                title="Potential Match Found",
-                message=f"We found a potential match ({best_score}/100 — {label}) for your lost {lost_item.category} report.",
                 notification_type='MATCH_FOUND',
-            )
+                related_object_id=lost_item.public_id,
+            ).exists()
+
+            if not already_notified:
+                best_match, best_score = max(high_matches, key=lambda x: x[1])
+                label = get_match_label(best_score)
+                count = len(high_matches)
+                plural = 'match' if count == 1 else 'matches'
+                Notification.objects.create(
+                    public_id=str(uuid.uuid4()),
+                    user=lost_item.user,
+                    title=f'{label} — {lost_item.category}',
+                    message=(
+                        f"We found {count} possible {plural} for your lost {lost_item.category} report "
+                        f"(best score: {best_score}/100 — {label}). "
+                        f"Visit your Matches page to review and claim your item."
+                    ),
+                    notification_type='MATCH_FOUND',
+                    action_url='/matches',
+                    related_object_id=lost_item.public_id,
+                )
 
     return matches_created_or_updated
 
@@ -264,6 +284,10 @@ def evaluate_found_item_matches(found_item: FoundItem, notify: bool = True) -> l
     """
     Evaluates a newly published FoundItem against all active LostItems.
     Creates or updates Match records and notifies relevant students if score >= 65.
+
+    Deduplication: each student's lost report receives at most one MATCH_FOUND
+    notification (keyed on related_object_id = lost_item.public_id).
+    This prevents duplicate notifications when matching is re-triggered.
     """
     if not found_item.is_published:
         return []
@@ -297,13 +321,29 @@ def evaluate_found_item_matches(found_item: FoundItem, notify: bool = True) -> l
                     lost_item.save(update_fields=['status', 'updated_at'])
 
                 if notify:
-                    label = get_match_label(score)
-                    Notification.objects.create(
-                        public_id=str(uuid.uuid4()),
+                    # Deduplication: one notification per lost report
+                    already_notified = Notification.objects.filter(
                         user=lost_item.user,
-                        title="Potential Match Found",
-                        message=f"A newly published item matches your lost {lost_item.category} report ({score}/100 — {label}).",
                         notification_type='MATCH_FOUND',
-                    )
+                        related_object_id=lost_item.public_id,
+                    ).exists()
+
+                    if not already_notified:
+                        label = get_match_label(score)
+                        found_title = found_item.title or found_item.category
+                        Notification.objects.create(
+                            public_id=str(uuid.uuid4()),
+                            user=lost_item.user,
+                            title=f'{label} — {lost_item.category}',
+                            message=(
+                                f"A newly registered item \"{found_title}\" may match your lost "
+                                f"{lost_item.category} report (score: {score}/100 — {label}). "
+                                f"Visit your Matches page to review and claim it."
+                            ),
+                            notification_type='MATCH_FOUND',
+                            action_url='/matches',
+                            related_object_id=lost_item.public_id,
+                        )
 
     return matches_created_or_updated
+

@@ -40,10 +40,19 @@ All requirements across the platform have been inspected, implemented, and verif
 ### Dedicated Vehicle Keys & Category-Specific Lost-Item MCQs (Requirements 4 & 8)
 * **Dedicated Vehicle Keys Category**: Independent from `Keys & Badges` in both lost and found reporting workflows, catalog filters, and matching algorithm.
 * **Tailored Vehicle Key MCQs**: 4 comprehensive multiple-choice questions (`vehicle_type`, `key_type`, `key_appearance`, `distinguishing_feature`) with realistic options including "Other" and "Not sure", plus detail text inputs.
-* **Alias Resolution**: Dedicated priority resolver ensures vehicle key terms (`motorcycle key`, `car key`, `scooter key`, `key fob`, `remote key`, `smart key`, `proximity key`) resolve to `Vehicle Keys` without falling back to generic `Keys & Badges`.
+* **Alias Resolution**: Dedicated priority resolver ensures vehicle key terms (`motorcycle key`, `car key`, `scooter key`, `scooty key`, `key fob`, `remote key`, `smart key`, `proximity key`) resolve to `Vehicle Keys` without falling back to generic `Keys & Badges`.
 * **Snapshot Persistence**: Question text and submitted answers are snapshotted in `original_answers` with versioning (`2026.1`), preserving historical integrity.
 * **Matching Integration**: Normalized attributes mapped directly to matching engine signals; category score matches 100% for same category and separates from generic keys.
 * **Privacy**: Private lost-report answers remain restricted to student owner and authorized custodians, never exposed to other claimants.
+
+### Match Notifications (Phase 10)
+* **Trigger Points**: `MATCH_FOUND` notifications are created by the real matching engine — `evaluate_lost_item_matches` (when a student submits a lost report) and `evaluate_found_item_matches` (when staff publish a found item). Both paths use `notify=True` from existing views.
+* **Deduplication**: Each lost report receives at most **one** `MATCH_FOUND` notification, keyed on `related_object_id = lost_item.public_id`. Re-running matching or re-publishing a found item never creates a duplicate.
+* **Message Quality**: Notification title reflects match strength (`Possible Match — Electronics` vs `Strong Possible Match — Electronics`). Message includes match count, best score, label, and a prompt to visit the Matches page.
+* **Deep Linking**: `action_url = '/matches'` is stored on every MATCH_FOUND notification. The frontend `NotificationsPage` prefers `n.action_url` over the generic meta path, so future per-report deep links will work without UI changes.
+* **User Isolation**: Notifications are strictly scoped per user — each student receives only notifications for their own lost reports.
+* **API Visibility**: `action_url` and `related_object_id` are serialized and returned by `GET /api/notifications/` for frontend consumption.
+* **Existing UI Integration**: `NotificationsPage.tsx` already handled `MATCH_FOUND` with a "Potential Match" badge (purple), "View Matches" action, and unread indicator. No UI redesign required.
 
 ### Nearest Station Recommendation (Requirement 7)
 * **Geolocation Consent**: Browser geolocation requested only upon explicit user click ("Find Nearby Stations").
@@ -62,8 +71,8 @@ All requirements across the platform have been inspected, implemented, and verif
 
 * **Django System Checks**: PASS (`python manage.py check` — 0 issues identified)
 * **Database Schema Integrity**: PASS (`python manage.py makemigrations --check --dry-run` — 0 changes detected)
-* **Backend Automated Test Suite**: PASS (163 tests passing across `accounts`, `items`, `collectionpoint`, and `pickup` — including 17 Vehicle Keys tests and 11 AI description service tests)
-* **Frontend Production Build**: PASS (`tsc && vite build` — 0 errors, built in 1.32s)
+* **Backend Automated Test Suite**: PASS (177 tests passing across `accounts`, `items`, `collectionpoint`, `notifications`, and `pickup` — including 17 Vehicle Keys tests, 11 AI description service tests, and 7 Match Notification tests)
+* **Frontend Production Build**: PASS (`tsc && vite build` — 0 errors, built in 2.37s)
 * **Local Development Servers**:
   - Backend API: `http://127.0.0.1:8000/` (Responding HTTP 200)
   - Frontend: `http://localhost:5173/` (Responding HTTP 200)

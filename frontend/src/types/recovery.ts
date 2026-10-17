@@ -127,6 +127,10 @@ export interface AppNotification {
   notification_type: string;
   read: boolean;
   created_at: string;
+  /** Optional frontend route this notification should navigate to, e.g. '/matches' */
+  action_url?: string;
+  /** Dedup anchor — public_id of the related object (e.g. lost_item.public_id) */
+  related_object_id?: string;
 }
 
 export interface AdminStats {
