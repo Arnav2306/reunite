@@ -7,9 +7,16 @@ export const Footer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-500">
           <div className="flex items-center space-x-2">
-            <span className="font-bold tracking-wider text-slate-900">REUNITE</span>
+            <Link to="/" aria-label="Reunite — Home">
+              <img
+                src="/reunite-logo-transparent.png"
+                alt="Reunite — Campus Lost & Found"
+                className="h-8 w-auto object-contain"
+                style={{ maxWidth: '100px' }}
+              />
+            </Link>
             <span className="text-slate-300">|</span>
-            <span>Campus Lost & Found Platform</span>
+            <span>Campus Lost &amp; Found Platform</span>
           </div>
 
           <div className="flex items-center space-x-6">

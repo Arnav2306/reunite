@@ -50,8 +50,14 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-[75vh] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <h1 className="text-2xl font-bold tracking-wider text-slate-900">REUNITE</h1>
-        <p className="text-xs font-medium text-slate-500 mt-0.5">Campus Lost &amp; Found</p>
+        <div className="flex justify-center mb-2">
+          <img
+            src="/reunite-logo-transparent.png"
+            alt="Reunite — Campus Lost & Found"
+            className="h-20 w-auto object-contain"
+            style={{ maxWidth: '180px' }}
+          />
+        </div>
         
         {/* Entry Choice Tabs: Student vs Admin / Staff */}
         <div className="mt-6 p-1 bg-slate-100 rounded-xl flex items-center justify-center max-w-xs mx-auto border border-slate-200">

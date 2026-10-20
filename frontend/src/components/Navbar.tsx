@@ -74,13 +74,13 @@ export const Navbar: React.FC = () => {
         <div className="flex justify-between h-16">
           {/* Brand */}
           <div className="flex items-center">
-            <Link to={isAuthenticated ? '/dashboard' : '/'} className="flex flex-col group mr-6">
-              <span className="text-xl font-bold tracking-wider text-slate-900 group-hover:text-blue-700 transition-colors">
-                REUNITE
-              </span>
-              <span className="text-[10px] font-medium tracking-normal text-slate-400 -mt-1">
-                Campus Lost &amp; Found
-              </span>
+            <Link to={isAuthenticated ? '/dashboard' : '/'} className="flex items-center mr-6 group" aria-label="Reunite – Campus Lost & Found – Home">
+              <img
+                src="/reunite-logo-transparent.png"
+                alt="Reunite — Campus Lost & Found"
+                className="h-9 w-auto object-contain transition-opacity group-hover:opacity-80"
+                style={{ maxWidth: '140px' }}
+              />
             </Link>
 
             {/* Desktop Navigation */}
