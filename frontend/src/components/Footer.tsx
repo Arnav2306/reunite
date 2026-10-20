@@ -1,7 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 
 export const Footer: React.FC = () => {
+  const { isDark } = useTheme();
   return (
     <footer className="bg-white border-t border-slate-200 mt-auto py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -9,7 +11,7 @@ export const Footer: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Link to="/" aria-label="Reunite — Home">
               <img
-                src="/reunite-logo-transparent.png"
+                src={isDark ? '/reunite-logo-transparent.png' : '/reunite-logo-light.png'}
                 alt="Reunite — Campus Lost & Found"
                 className="h-8 w-auto object-contain"
                 style={{ maxWidth: '100px' }}

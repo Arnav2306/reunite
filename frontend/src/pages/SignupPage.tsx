@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../context/ThemeContext';
 import { AlertCircle, ArrowRight, Mail, Phone, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 
 export const SignupPage: React.FC = () => {
   const { signup } = useAuth();
+  const { isDark } = useTheme();
   const navigate = useNavigate();
 
   const [signupMethod, setSignupMethod] = useState<'email' | 'phone'>('email');
@@ -90,7 +92,7 @@ export const SignupPage: React.FC = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="flex justify-center mb-2">
           <img
-            src="/reunite-logo-transparent.png"
+            src={isDark ? '/reunite-logo-transparent.png' : '/reunite-logo-light.png'}
             alt="Reunite — Campus Lost & Found"
             className="h-20 w-auto object-contain"
             style={{ maxWidth: '180px' }}

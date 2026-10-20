@@ -9,7 +9,7 @@ import { Menu, X, Bell, User as UserIcon, LogOut, ChevronRight, Search, Camera, 
 
 export const Navbar: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, isDark } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -76,7 +76,7 @@ export const Navbar: React.FC = () => {
           <div className="flex items-center">
             <Link to={isAuthenticated ? '/dashboard' : '/'} className="flex items-center mr-6 group" aria-label="Reunite – Campus Lost & Found – Home">
               <img
-                src="/reunite-logo-transparent.png"
+                src={isDark ? '/reunite-logo-transparent.png' : '/reunite-logo-light.png'}
                 alt="Reunite — Campus Lost & Found"
                 className="h-9 w-auto object-contain transition-opacity group-hover:opacity-80"
                 style={{ maxWidth: '140px' }}
