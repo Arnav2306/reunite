@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import { api, getMediaUrl } from '../services/api';
 import type { AdminStats, Claim, LostItem, MatchItem, AdminFoundItem, AvailableItem } from '../types/recovery';
@@ -9,7 +9,7 @@ import {
   PlusCircle, CheckCircle2, Package,
   Sparkles, MapPin, Eye, X,
   ShieldAlert, RefreshCw, Star, ClipboardList,
-  History, MessageSquare
+  History, MessageSquare, Trash2, AlertTriangle
 } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
@@ -74,9 +74,141 @@ export const DashboardPage: React.FC = () => {
     enabled: !!isStaff,
   });
 
+  const queryClient = useQueryClient();
+
+  const { data: adminLostReports = [], isLoading: isLostLoading } = useQuery<LostItem[]>({
+    queryKey: ['admin-lost-reports'],
+    queryFn: async () => {
+      const res = await api.get<LostItem[] | { results: LostItem[] }>('/api/items/lost-items/');
+      return Array.isArray(res) ? res : res.results || [];
+    },
+    enabled: !!isStaff,
+  });
+
   // Admin Case Detail inspection modal state
   const [inspectingCaseId, setInspectingCaseId] = useState<string | null>(null);
   const [activeAdminTab, setActiveAdminTab] = useState<'queue' | 'tasks' | 'audit' | 'feedback'>('queue');
+
+  // Admin search & filtering state
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [adminReportTypeFilter, setAdminReportTypeFilter] = useState<'all' | 'found' | 'lost' | 'suspicious'>('all');
+  const [adminStatusFilter, setAdminStatusFilter] = useState('all');
+  const [adminCategoryFilter, setAdminCategoryFilter] = useState('all');
+
+  // Admin archive modal state
+  const [archiveTarget, setArchiveTarget] = useState<{ type: 'found' | 'lost'; id: string; title: string } | null>(null);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  const handleArchiveReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!archiveTarget) return;
+    if (!archiveReason.trim()) {
+      setArchiveError('A removal/archive reason is required for the audit record.');
+      return;
+    }
+    setArchiveSubmitting(true);
+    setArchiveError(null);
+    try {
+      if (archiveTarget.type === 'found') {
+        await api.post(`/api/items/found-items/${archiveTarget.id}/archive/`, { reason: archiveReason.trim() });
+      } else {
+        await api.post(`/api/items/lost-items/${archiveTarget.id}/archive/`, { reason: archiveReason.trim() });
+      }
+      setArchiveTarget(null);
+      setArchiveReason('');
+      queryClient.invalidateQueries({ queryKey: ['admin-recovery-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-lost-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-audit-logs'] });
+    } catch (err: any) {
+      setArchiveError(err.message || 'Failed to archive report.');
+    } finally {
+      setArchiveSubmitting(false);
+    }
+  };
+
+  const unifiedReports = useMemo(() => {
+    if (!isStaff) return [];
+    const list: Array<{
+      id: string;
+      title: string;
+      reportType: 'found' | 'lost';
+      category: string;
+      status: string;
+      riskTier: number;
+      location: string;
+      date: string;
+      isSuspicious: boolean;
+      suspiciousReason: string;
+      canInspect: boolean;
+    }> = [];
+
+    recoveryQueue.forEach((item) => {
+      const flaggedLog = auditLogs.find(
+        (l) => l.target_id === item.public_id && (l.action.includes('FLAGGED') || l.action.includes('SUSPICIOUS'))
+      );
+      const isSuspicious = !item.is_published || !!flaggedLog;
+      const suspiciousReason = flaggedLog?.details?.reason || (!item.is_published ? 'Held for staff review' : '');
+
+      list.push({
+        id: item.public_id,
+        title: item.title || item.category,
+        reportType: 'found',
+        category: item.category,
+        status: item.status,
+        riskTier: item.risk_tier,
+        location: item.collection_location?.station_code || item.found_location || 'Campus Desk',
+        date: item.published_at || item.found_date || (item as any).created_at || new Date().toISOString(),
+        isSuspicious,
+        suspiciousReason,
+        canInspect: true,
+      });
+    });
+
+    adminLostReports.forEach((item) => {
+      const flaggedLog = auditLogs.find(
+        (l) => l.target_id === item.public_id && (l.action.includes('FLAGGED') || l.action.includes('SUSPICIOUS'))
+      );
+      const isSuspicious = !!flaggedLog;
+      const suspiciousReason = flaggedLog?.details?.reason || '';
+
+      list.push({
+        id: item.public_id,
+        title: item.category,
+        reportType: 'lost',
+        category: item.category,
+        status: item.status,
+        riskTier: item.risk_tier || 0,
+        location: (item.original_answers as any)?.lost_location || 'Campus',
+        date: item.created_at,
+        isSuspicious,
+        suspiciousReason,
+        canInspect: false,
+      });
+    });
+
+    return list.filter((r) => {
+      if (adminReportTypeFilter === 'found' && r.reportType !== 'found') return false;
+      if (adminReportTypeFilter === 'lost' && r.reportType !== 'lost') return false;
+      if (adminReportTypeFilter === 'suspicious' && !r.isSuspicious) return false;
+
+      if (adminStatusFilter !== 'all' && r.status.toLowerCase() !== adminStatusFilter.toLowerCase()) return false;
+      if (adminCategoryFilter !== 'all' && r.category.toLowerCase() !== adminCategoryFilter.toLowerCase()) return false;
+
+      if (adminSearchQuery.trim()) {
+        const q = adminSearchQuery.toLowerCase();
+        const matchesTitle = r.title.toLowerCase().includes(q);
+        const matchesCat = r.category.toLowerCase().includes(q);
+        const matchesId = r.id.toLowerCase().includes(q);
+        const matchesLoc = r.location.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesCat && !matchesId && !matchesLoc) return false;
+      }
+
+      return true;
+    });
+  }, [isStaff, recoveryQueue, adminLostReports, auditLogs, adminReportTypeFilter, adminStatusFilter, adminCategoryFilter, adminSearchQuery]);
 
   // Student feedback state
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -809,89 +941,186 @@ export const DashboardPage: React.FC = () => {
         </button>
       </div>
 
-      {/* TAB 1: RECOVERY QUEUE */}
+      {/* TAB 1: REPORTS & CUSTODY MANAGEMENT QUEUE */}
       {activeAdminTab === 'queue' && (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xs overflow-hidden space-y-0">
-          <div className="p-5 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Institutional Recovery Queue</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Live items currently registered in custody, awaiting verification, or ready for physical handover.
-              </p>
+          <div className="p-5 border-b border-slate-200 dark:border-slate-700 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">Institutional Reports &amp; Custody Management</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Complete view of all lost &amp; found reports, suspicious review flags, active campus stations, and resolution controls.
+                </p>
+              </div>
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Matching Reports: <strong>{unifiedReports.length}</strong>
+              </div>
             </div>
-            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Total Items: <strong>{recoveryQueue.length}</strong>
+
+            {/* Filter and Search Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search title, category, ID..."
+                  value={adminSearchQuery}
+                  onChange={(e) => setAdminSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <select
+                  value={adminReportTypeFilter}
+                  onChange={(e) => setAdminReportTypeFilter(e.target.value as any)}
+                  className="w-full py-2 px-3 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Report Types</option>
+                  <option value="found">Found Items ({recoveryQueue.length})</option>
+                  <option value="lost">Lost Reports ({adminLostReports.length})</option>
+                  <option value="suspicious">⚠️ Suspicious / Flagged Reports</option>
+                </select>
+              </div>
+
+              <div>
+                <select
+                  value={adminStatusFilter}
+                  onChange={(e) => setAdminStatusFilter(e.target.value)}
+                  className="w-full py-2 px-3 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="REPORTED">Reported</option>
+                  <option value="DEPOSIT_PENDING">Deposit Pending</option>
+                  <option value="DEPOSITED">Deposited in Custody</option>
+                  <option value="SECURE_HOLD">Secure Hold</option>
+                  <option value="READY_FOR_PICKUP">Ready For Pickup</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="ARCHIVED">Archived / Removed</option>
+                </select>
+              </div>
+
+              <div>
+                <select
+                  value={adminCategoryFilter}
+                  onChange={(e) => setAdminCategoryFilter(e.target.value)}
+                  className="w-full py-2 px-3 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Categories</option>
+                  <option value="Electronics">Electronics</option>
+                  <option value="Bottles">Bottles</option>
+                  <option value="ID Cards">ID Cards</option>
+                  <option value="Keys">Keys</option>
+                  <option value="Wallets">Wallets</option>
+                  <option value="Bags">Bags</option>
+                  <option value="Stationery">Stationery</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          {isQueueLoading ? (
+          {isQueueLoading || isLostLoading ? (
             <div className="py-16 text-center text-xs text-slate-500">
               <RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-400 mb-2" />
-              Loading recovery queue...
+              Loading reports queue...
             </div>
-          ) : recoveryQueue.length === 0 ? (
+          ) : unifiedReports.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400">
-              No items registered in the recovery queue yet.
+              No reports match the selected filters.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
-                    <th className="py-3 px-4">Item</th>
+                    <th className="py-3 px-4">Item &amp; ID</th>
+                    <th className="py-3 px-4">Type</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Risk</th>
-                    <th className="py-3 px-4">Location</th>
-                    <th className="py-3 px-4">Last Updated</th>
-                    <th className="py-3 px-4 text-right">Action</th>
+                    <th className="py-3 px-4">Location / Station</th>
+                    <th className="py-3 px-4">Review Signal</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                  {recoveryQueue.slice(0, 15).map((item) => (
-                    <tr key={item.public_id} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
+                  {unifiedReports.map((r) => (
+                    <tr key={`${r.reportType}-${r.id}`} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 dark:text-white">{item.title || item.category}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">ID: {item.public_id.substring(0, 8)}</div>
+                        <div className="font-bold text-slate-900 dark:text-white">{r.title}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">ID: {r.id.substring(0, 8)} · {r.category}</div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          r.reportType === 'found'
+                            ? 'bg-teal-50 text-teal-800 dark:bg-teal-950/40 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
+                            : 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                        }`}>
+                          {r.reportType}
+                        </span>
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          item.status === 'READY_FOR_PICKUP'
+                          r.status === 'READY_FOR_PICKUP'
                             ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
-                            : item.status === 'RESOLVED'
+                            : r.status === 'RESOLVED'
                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                            : item.status === 'DEPOSIT_PENDING'
+                            : r.status === 'DEPOSIT_PENDING'
                             ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                            : r.status === 'ARCHIVED'
+                            ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-300'
                             : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
                         }`}>
-                          {item.status}
+                          {r.status}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
-                          item.risk_tier === 1
+                          r.riskTier === 1
                             ? 'bg-red-50 text-red-800 dark:bg-red-900/40 dark:text-red-300 border border-red-200 dark:border-red-800'
                             : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
                         }`}>
-                          {item.risk_tier === 1 ? 'Valuable (OTP)' : 'General'}
+                          {r.riskTier === 1 ? 'Valuable (OTP)' : 'General'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4">
-                        <div className="text-slate-800 dark:text-slate-200 font-medium">
-                          {item.collection_location?.station_code || 'Central Desk'}
-                        </div>
-                        <div className="text-[11px] text-slate-400">{item.found_location || 'Campus'}</div>
+                      <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
+                        {r.location}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-[11px]">
-                        {new Date(item.published_at || item.found_date || Date.now()).toLocaleDateString()}
+                      <td className="py-3.5 px-4">
+                        {r.isSuspicious ? (
+                          <span
+                            title={r.suspiciousReason}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded text-[10px] font-bold"
+                          >
+                            <AlertTriangle className="w-3 h-3 text-amber-600" />
+                            Flagged for Review
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">Clear</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => setInspectingCaseId(item.public_id)}
-                          className="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 rounded-lg shadow-2xs transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5 mr-1 text-slate-500" />
-                          Inspect Case
-                        </button>
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          {r.canInspect && (
+                            <button
+                              onClick={() => setInspectingCaseId(r.id)}
+                              className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 rounded-lg shadow-2xs transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                              Inspect
+                            </button>
+                          )}
+                          {r.status !== 'ARCHIVED' && (
+                            <button
+                              onClick={() => setArchiveTarget({ type: r.reportType, id: r.id, title: r.title })}
+                              className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 rounded-lg transition-colors"
+                              title="Archive / Remove Report"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-1 text-red-600" />
+                              Archive
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1252,6 +1481,83 @@ export const DashboardPage: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Section 12: Admin Archive / Removal Confirmation Modal */}
+      {archiveTarget && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4 relative">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="w-5 h-5" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Archive &amp; Remove Report</h3>
+              </div>
+              <button
+                onClick={() => { setArchiveTarget(null); setArchiveError(null); setArchiveReason(''); }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              You are archiving the {archiveTarget.type} report for <strong className="text-slate-900 dark:text-white">{archiveTarget.title}</strong> ({archiveTarget.id.substring(0, 8)}).
+            </p>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 space-y-1">
+              <p className="font-semibold">Soft-Deletion / Archive Policy:</p>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                <li>Removes report from normal student catalog and active matching.</li>
+                <li>Dismisses linked pending match candidates.</li>
+                <li>Preserves custody logs and audit trail for institutional compliance.</li>
+              </ul>
+            </div>
+
+            <form onSubmit={handleArchiveReport} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Removal Reason <span className="text-red-500">*</span> (Recorded in Audit History)
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={archiveReason}
+                  onChange={(e) => setArchiveReason(e.target.value)}
+                  placeholder="e.g. Duplicate report, invalid/spam entry, or disposed according to policy..."
+                  className="w-full text-xs p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-hidden"
+                />
+              </div>
+
+              {archiveError && (
+                <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">
+                  {archiveError}
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setArchiveTarget(null); setArchiveError(null); setArchiveReason(''); }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={archiveSubmitting || !archiveReason.trim()}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-xl transition-colors shadow-xs flex items-center gap-1.5"
+                >
+                  {archiveSubmitting ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  Confirm Archive &amp; Remove
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

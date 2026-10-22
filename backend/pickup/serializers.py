@@ -57,6 +57,8 @@ class CreateClaimSerializer(serializers.Serializer):
     def validate_found_item_id(self, value):
         try:
             item = FoundItem.objects.get(public_id=value, is_published=True)
+            if item.status == 'ARCHIVED':
+                raise serializers.ValidationError("Found item is archived and no longer available for claim.")
         except FoundItem.DoesNotExist:
             raise serializers.ValidationError("Found item does not exist or is not published.")
         return item

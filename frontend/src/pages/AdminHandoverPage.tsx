@@ -39,6 +39,24 @@ export const AdminHandoverPage: React.FC = () => {
     },
   });
 
+  // Regenerate OTP mutation
+  const regenerateOtpMutation = useMutation({
+    mutationFn: async (handoverId: string) => {
+      return api.post(`/api/handovers/admin/${handoverId}/regenerate-otp/`);
+    },
+    onSuccess: (_, handoverId) => {
+      setActionError((prev) => ({ ...prev, [handoverId]: null }));
+      setOtpInputs((prev) => ({ ...prev, [handoverId]: '' }));
+      queryClient.invalidateQueries({ queryKey: ['admin-handovers'] });
+    },
+    onError: (err: ApiError, handoverId) => {
+      setActionError((prev) => ({
+        ...prev,
+        [handoverId]: err.message || 'Failed to regenerate OTP.',
+      }));
+    },
+  });
+
   // Confirm collection mutation (for general items)
   const confirmCollectionMutation = useMutation({
     mutationFn: async (handoverId: string) => {
@@ -196,6 +214,20 @@ export const AdminHandoverPage: React.FC = () => {
                             <KeyRound className="w-3.5 h-3.5 mr-1" />
                           )}
                           Verify OTP
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[11px] text-slate-500">
+                          Failed attempts: <strong>{handover.failed_otp_attempts}</strong> / 5
+                          {handover.otp_expires_at && ` · Expires: ${new Date(handover.otp_expires_at).toLocaleTimeString()}`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => regenerateOtpMutation.mutate(handover.public_id)}
+                          disabled={regenerateOtpMutation.isPending}
+                          className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 underline disabled:opacity-50"
+                        >
+                          {regenerateOtpMutation.isPending ? 'Regenerating...' : 'Regenerate OTP'}
                         </button>
                       </div>
                     </div>

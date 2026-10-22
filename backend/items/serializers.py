@@ -183,6 +183,7 @@ class MatchSerializer(serializers.ModelSerializer):
     """
     Serializer for match candidates shown to the student.
     Strictly nests FoundItem using AvailableItemPublicSerializer to ensure NO private fields leak.
+    is_self_match is surfaced so staff can identify flagged self-match pairs in the admin UI.
     """
     found_item = AvailableItemPublicSerializer(read_only=True)
     label = serializers.SerializerMethodField()
@@ -190,6 +191,7 @@ class MatchSerializer(serializers.ModelSerializer):
     lost_item_public_id = serializers.CharField(source='lost_item.public_id', read_only=True)
     lost_item_category = serializers.CharField(source='lost_item.category', read_only=True)
     lost_item_description = serializers.CharField(source='lost_item.description', read_only=True)
+    is_self_match = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
@@ -203,6 +205,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'found_item',
             'score',
             'label',
+            'is_self_match',
             'score_breakdown',
             'status',
             'matching_algorithm_version',
@@ -218,6 +221,10 @@ class MatchSerializer(serializers.ModelSerializer):
     def get_label(self, obj):
         from .services.matching import get_match_label
         return get_match_label(obj.score)
+
+    def get_is_self_match(self, obj):
+        breakdown = obj.score_breakdown or {}
+        return bool(breakdown.get('self_match', False))
 
 
 class StudentFoundItemSerializer(serializers.ModelSerializer):

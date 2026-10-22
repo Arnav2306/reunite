@@ -218,14 +218,20 @@ def evaluate_lost_item_matches(lost_item: LostItem, notify: bool = True) -> list
     If a notification already exists for this lost_item (keyed on related_object_id),
     no further notifications are sent even if matching is re-run.
     """
+    if lost_item.status in [ItemStatus.RESOLVED, ItemStatus.CANCELLED, ItemStatus.ARCHIVED]:
+        return []
+
     matches_created_or_updated = []
-    found_items = FoundItem.objects.filter(is_published=True)
+    found_items = FoundItem.objects.filter(is_published=True).exclude(status=ItemStatus.ARCHIVED)
 
     high_matches = []
 
     for found_item in found_items:
         score, breakdown = calculate_match_score(lost_item, found_item)
-        
+        is_self_match = (lost_item.user_id == found_item.user_id)
+        if is_self_match:
+            breakdown['self_match'] = True
+
         # Only record match candidates if they have non-trivial score (e.g. >= 40)
         # or if category matches
         if score >= 40 or breakdown['category_score'] >= 75:
@@ -242,8 +248,28 @@ def evaluate_lost_item_matches(lost_item: LostItem, notify: bool = True) -> list
                 }
             )
             matches_created_or_updated.append(match_obj)
-            if score >= 65:
-                high_matches.append((match_obj, score))
+
+            if is_self_match:
+                # Fraud Prevention: self-match flagged for review; never send actionable notification
+                from audit.models import AuditLog
+                AuditLog.objects.create(
+                    actor=lost_item.user,
+                    action='SELF_MATCH_FLAGGED_FOR_REVIEW',
+                    target_type='Match',
+                    target_id=str(match_obj.public_id),
+                    details={
+                        'lost_item_id': str(lost_item.public_id),
+                        'found_item_id': str(found_item.public_id),
+                        'score': score,
+                        'reason': 'Same user reported both lost and found item for matching candidate',
+                        'review_signal': True,
+                    }
+                )
+            else:
+                if score >= 65:
+                    from items.services.fraud_prevention import check_collusion_between_accounts
+                    check_collusion_between_accounts(lost_item.user, found_item.user)
+                    high_matches.append((match_obj, score))
 
     if high_matches:
         if lost_item.status == ItemStatus.REPORTED:
@@ -300,6 +326,10 @@ def evaluate_found_item_matches(found_item: FoundItem, notify: bool = True) -> l
 
     for lost_item in active_lost_items:
         score, breakdown = calculate_match_score(lost_item, found_item)
+        is_self_match = (lost_item.user_id == found_item.user_id)
+        if is_self_match:
+            breakdown['self_match'] = True
+
         if score >= 40 or breakdown['category_score'] >= 75:
             existing = Match.objects.filter(lost_item=lost_item, found_item=found_item).first()
             pub_id = existing.public_id if (existing and existing.public_id) else str(uuid.uuid4())
@@ -315,35 +345,55 @@ def evaluate_found_item_matches(found_item: FoundItem, notify: bool = True) -> l
             )
             matches_created_or_updated.append(match_obj)
 
-            if score >= 65:
-                if lost_item.status == ItemStatus.REPORTED:
-                    lost_item.status = ItemStatus.MATCH_FOUND
-                    lost_item.save(update_fields=['status', 'updated_at'])
+            if is_self_match:
+                # Fraud Prevention: self-match flagged for review; never send actionable notification
+                from audit.models import AuditLog
+                AuditLog.objects.create(
+                    actor=found_item.user,
+                    action='SELF_MATCH_FLAGGED_FOR_REVIEW',
+                    target_type='Match',
+                    target_id=str(match_obj.public_id),
+                    details={
+                        'lost_item_id': str(lost_item.public_id),
+                        'found_item_id': str(found_item.public_id),
+                        'score': score,
+                        'reason': 'Same user reported both lost and found item for matching candidate',
+                        'review_signal': True,
+                    }
+                )
+            else:
+                if score >= 65:
+                    from items.services.fraud_prevention import check_collusion_between_accounts
+                    check_collusion_between_accounts(found_item.user, lost_item.user)
 
-                if notify:
-                    # Deduplication: one notification per lost report
-                    already_notified = Notification.objects.filter(
-                        user=lost_item.user,
-                        notification_type='MATCH_FOUND',
-                        related_object_id=lost_item.public_id,
-                    ).exists()
+                    if lost_item.status == ItemStatus.REPORTED:
+                        lost_item.status = ItemStatus.MATCH_FOUND
+                        lost_item.save(update_fields=['status', 'updated_at'])
 
-                    if not already_notified:
-                        label = get_match_label(score)
-                        found_title = found_item.title or found_item.category
-                        Notification.objects.create(
-                            public_id=str(uuid.uuid4()),
+                    if notify:
+                        # Deduplication: one notification per lost report
+                        already_notified = Notification.objects.filter(
                             user=lost_item.user,
-                            title=f'{label} — {lost_item.category}',
-                            message=(
-                                f"A newly registered item \"{found_title}\" may match your lost "
-                                f"{lost_item.category} report (score: {score}/100 — {label}). "
-                                f"Visit your Matches page to review and claim it."
-                            ),
                             notification_type='MATCH_FOUND',
-                            action_url='/matches',
                             related_object_id=lost_item.public_id,
-                        )
+                        ).exists()
+
+                        if not already_notified:
+                            label = get_match_label(score)
+                            found_title = found_item.title or found_item.category
+                            Notification.objects.create(
+                                public_id=str(uuid.uuid4()),
+                                user=lost_item.user,
+                                title=f'{label} — {lost_item.category}',
+                                message=(
+                                    f"A newly registered item \"{found_title}\" may match your lost "
+                                    f"{lost_item.category} report (score: {score}/100 — {label}). "
+                                    f"Visit your Matches page to review and claim it."
+                                ),
+                                notification_type='MATCH_FOUND',
+                                action_url='/matches',
+                                related_object_id=lost_item.public_id,
+                            )
 
     return matches_created_or_updated
 

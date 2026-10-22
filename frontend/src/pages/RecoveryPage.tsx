@@ -39,6 +39,28 @@ export const RecoveryPage: React.FC = () => {
     },
   });
 
+  const [otpMessage, setOtpMessage] = useState<Record<string, string | null>>({});
+
+  const regenerateOtpMutation = useMutation({
+    mutationFn: async (claimPublicId: string) => {
+      return api.post(`/api/pickup/claims/${claimPublicId}/regenerate-otp/`);
+    },
+    onSuccess: (res: any, claimPublicId) => {
+      setOtpMessage((prev) => ({
+        ...prev,
+        [claimPublicId]: res.detail || 'New secure OTP generated and sent to your notifications!',
+      }));
+      queryClient.invalidateQueries({ queryKey: ['my-claims'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+    onError: (err: ApiError, claimPublicId) => {
+      setOtpMessage((prev) => ({
+        ...prev,
+        [claimPublicId]: err.message || 'Failed to request new OTP.',
+      }));
+    },
+  });
+
   const STEPS = ['Claim Submitted', 'Under Review', 'Approved / Ready for Pickup', 'Handover', 'Resolved'];
 
   const getStepStatus = (claim: Claim, stepIndex: number) => {
@@ -197,11 +219,31 @@ export const RecoveryPage: React.FC = () => {
                         </div>
                       </div>
                     ) : handover?.is_valuable ? (
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-amber-900 flex items-start space-x-2">
-                        <KeyRound className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                        <div>
-                          <strong>Valuable Item OTP Verification Required:</strong> Your 6-digit OTP code has been delivered to your notifications. Present your OTP along with your student ID at the collection desk to complete physical handover.
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-amber-900 space-y-2">
+                        <div className="flex items-start space-x-2">
+                          <KeyRound className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                          <div className="flex-1 text-xs">
+                            <strong>Valuable Item OTP Verification Required:</strong> Your 6-digit OTP code has been delivered to your in-app notifications. Present your OTP along with your student ID at the collection desk to complete physical handover.
+                          </div>
                         </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-amber-200/60 text-[11px]">
+                          <span>
+                            {handover.otp_expires_at ? `Code expires at ${new Date(handover.otp_expires_at).toLocaleTimeString()}` : 'Secure short expiry active'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => regenerateOtpMutation.mutate(claim.public_id)}
+                            disabled={regenerateOtpMutation.isPending}
+                            className="font-bold text-amber-800 hover:text-amber-950 underline disabled:opacity-50"
+                          >
+                            {regenerateOtpMutation.isPending ? 'Requesting...' : 'Request New OTP'}
+                          </button>
+                        </div>
+                        {otpMessage[claim.public_id] && (
+                          <p className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/70 p-2 rounded">
+                            {otpMessage[claim.public_id]}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-blue-900 flex items-start space-x-2">

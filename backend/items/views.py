@@ -213,6 +213,121 @@ class FoundItemAdminViewSet(viewsets.ModelViewSet):
             'audit_logs': audit_data,
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='confirm-deposit')
+    def confirm_deposit(self, request, public_id=None):
+        """
+        Authorized custody workflow confirming physical deposit of a found item at a station.
+        Restricted to authorized staff (custodians, admins).
+        Transitions status to DEPOSITED and creates a physical custody audit log.
+        """
+        from audit.models import AuditLog
+        from collectionpoint.models import CollectionPoint
+        item = self.get_object()
+        cp_id = request.data.get('collection_point') or request.data.get('collection_point_id')
+        if cp_id:
+            try:
+                if str(cp_id).isdigit():
+                    cp = CollectionPoint.objects.get(id=int(cp_id))
+                else:
+                    cp = CollectionPoint.objects.get(Q(public_id=cp_id) | Q(station_code=cp_id))
+                item.collection_point = cp
+            except CollectionPoint.DoesNotExist:
+                return Response({'detail': 'Specified collection point station not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not item.collection_point:
+            return Response(
+                {'detail': 'An item cannot be marked as DEPOSITED without an assigned physical collection point.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        item.status = ItemStatus.DEPOSITED
+        item.save(update_fields=['status', 'collection_point', 'updated_at'])
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='PHYSICAL_DEPOSIT_CONFIRMED',
+            target_type='FoundItem',
+            target_id=str(item.public_id),
+            details={
+                'station_code': item.collection_point.station_code,
+                'station_building': item.collection_point.building,
+                'custodian_email': request.user.email,
+            }
+        )
+
+        return Response(self.get_serializer(item).data, status=status.HTTP_200_OK)
+
+    def perform_update(self, serializer):
+        from audit.models import AuditLog
+        new_status = serializer.validated_data.get('status')
+        if new_status == ItemStatus.RESOLVED:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({
+                'status': 'Items cannot be manually marked as RESOLVED. Status RESOLVED is exclusively granted upon valid completion of physical handover verification.'
+            })
+
+        new_cp = serializer.validated_data.get('collection_point') or serializer.instance.collection_point
+        if new_status == ItemStatus.DEPOSITED and not new_cp:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'status': 'An item cannot be marked as DEPOSITED without an assigned physical collection point.'})
+
+        item = serializer.save()
+        if new_status == ItemStatus.DEPOSITED:
+            AuditLog.objects.create(
+                actor=self.request.user,
+                action='PHYSICAL_DEPOSIT_CONFIRMED',
+                target_type='FoundItem',
+                target_id=str(item.public_id),
+                details={
+                    'station_code': item.collection_point.station_code if item.collection_point else None,
+                    'custodian_email': self.request.user.email,
+                }
+            )
+
+    @action(detail=True, methods=['post'], url_path='archive')
+    def archive(self, request, public_id=None):
+        """
+        Admin-only action to archive/remove a found item report.
+        Requires an explicit removal reason.
+        Soft-deletes/archives the report, unpublishes it, and dismisses active matches.
+        Preserves custody records and logs an audit trail.
+        """
+        item = self.get_object()
+        reason = request.data.get('reason', '').strip()
+        if not reason:
+            return Response({'detail': 'Removal/archive reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if item.status == ItemStatus.ARCHIVED:
+            return Response({'detail': 'Report is already archived.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.db import transaction
+        from audit.models import AuditLog
+        from items.models import Match, MatchStatus
+
+        with transaction.atomic():
+            item.status = ItemStatus.ARCHIVED
+            item.is_published = False
+            item.save(update_fields=['status', 'is_published', 'updated_at'])
+
+            # Safely dismiss active candidate/reviewed matches
+            Match.objects.filter(
+                found_item=item,
+                status__in=[MatchStatus.CANDIDATE, MatchStatus.REVIEWED]
+            ).update(status=MatchStatus.DISMISSED)
+
+            AuditLog.objects.create(
+                actor=request.user,
+                action='REPORT_ARCHIVED',
+                target_type='FoundItem',
+                target_id=str(item.public_id),
+                details={
+                    'item_title': item.title,
+                    'reason': reason,
+                    'admin_email': request.user.email,
+                }
+            )
+
+        return Response(self.get_serializer(item).data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='update-disposition')
     def update_disposition(self, request, public_id=None):
         """
@@ -257,7 +372,7 @@ class AvailableItemsPublicViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = FoundItem.objects.filter(is_published=True).select_related('collection_point').order_by('-published_at', '-created_at')
+        qs = FoundItem.objects.filter(is_published=True).exclude(status=ItemStatus.ARCHIVED).select_related('collection_point').order_by('-published_at', '-created_at')
 
         search = self.request.query_params.get('search')
         if search:
@@ -426,24 +541,75 @@ class StudentFoundItemViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin']:
             return FoundItem.objects.filter(source='student_report').order_by('-created_at')
-        return FoundItem.objects.filter(user=user, source='student_report').order_by('-created_at')
+        return FoundItem.objects.filter(user=user, source='student_report').exclude(status=ItemStatus.ARCHIVED).order_by('-created_at')
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if not user.is_authenticated or not user.is_active:
+            return Response({'detail': 'Authentication and active account required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not (user.email or user.mobile_number):
+            return Response({'detail': 'Verified institutional identity is required to report found items.'}, status=status.HTTP_403_FORBIDDEN)
+
+        from .services.fraud_prevention import check_report_rate_limit, detect_duplicate_report
+        is_limited, count = check_report_rate_limit(user, report_type='found')
+        if is_limited:
+            return Response(
+                {'detail': 'Too many found item reports submitted recently. Please wait before submitting another report.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        category = request.data.get('category', 'Other')
+        description = request.data.get('description', '')
+        is_dup, existing, reason, is_review_signal = detect_duplicate_report(
+            user, category, description, model_class=FoundItem
+        )
+        if is_dup and existing:
+            return Response(
+                {
+                    'detail': f'A matching active found report already exists ({existing.public_id}). Repeated submissions are prevented to avoid duplicate records and notifications.',
+                    'existing_report_id': existing.public_id,
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         from .services.matching import evaluate_found_item_matches
+        from .services.fraud_prevention import detect_duplicate_report, detect_and_record_image_upload
+        from audit.models import AuditLog
+
         public_id = str(uuid.uuid4())
         cannot_carry = serializer.validated_data.get('cannot_carry', False)
-        # If student cannot carry the item, status is REPORTED (observation only), not DEPOSIT_PENDING
+        category = serializer.validated_data.get('category', 'Other')
+        description = serializer.validated_data.get('description', '')
+
+        _, _, reason, is_review_signal = detect_duplicate_report(
+            self.request.user, category, description, model_class=FoundItem
+        )
+
         initial_status = ItemStatus.REPORTED if cannot_carry else ItemStatus.DEPOSIT_PENDING
+        should_publish = not is_review_signal
+
         item = serializer.save(
             public_id=public_id,
             user=self.request.user,
             source='student_report',
             status=initial_status,
-            is_published=True,
-            published_at=timezone.now(),
+            is_published=should_publish,
+            published_at=timezone.now() if should_publish else None,
         )
 
-        # Handle image upload
+        if is_review_signal:
+            AuditLog.objects.create(
+                actor=self.request.user,
+                action='REPORT_FLAGGED_FOR_REVIEW',
+                target_type='FoundItem',
+                target_id=item.public_id,
+                details={'reason': reason, 'review_signal': True, 'held_for_review': True}
+            )
+
+        # Handle image upload and cross-account reuse detection
         images = self.request.FILES.getlist('images') or self.request.FILES.getlist('image')
         content_type_obj = ContentType.objects.get_for_model(FoundItem)
         for img in images:
@@ -452,9 +618,41 @@ class StudentFoundItemViewSet(viewsets.ModelViewSet):
                 object_id=item.id,
                 image=img
             )
+            detect_and_record_image_upload(img, self.request.user, 'FoundItem', item.public_id)
 
-        # Evaluate matching immediately against active lost items
-        evaluate_found_item_matches(item, notify=True)
+        # Evaluate matching immediately against active lost items if published
+        if should_publish:
+            evaluate_found_item_matches(item, notify=True)
+
+    def update(self, request, *args, **kwargs):
+        return Response({'detail': 'Direct modifications to published found reports are restricted to custodial staff.'}, status=status.HTTP_403_FORBIDDEN)
+
+    def partial_update(self, request, *args, **kwargs):
+        return Response({'detail': 'Direct modifications to published found reports are restricted to custodial staff.'}, status=status.HTTP_403_FORBIDDEN)
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel(self, request, pk=None):
+        from audit.models import AuditLog
+        item = self.get_object()
+        user = request.user
+        is_staff_user = (user.is_staff or (hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin']))
+        if not is_staff_user and item.user != user:
+            return Response({'detail': 'You do not have permission to cancel this report.'}, status=status.HTTP_403_FORBIDDEN)
+        if item.status in [ItemStatus.RESOLVED, ItemStatus.HANDOVER, ItemStatus.CANCELLED]:
+            return Response({'detail': f'Report is already {item.status} and cannot be cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        item.status = ItemStatus.CANCELLED
+        item.is_published = False
+        item.save(update_fields=['status', 'is_published', 'updated_at'])
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='FOUND_REPORT_CANCELLED',
+            target_type='FoundItem',
+            target_id=str(item.public_id),
+            details={'reason': 'User requested cancellation of obsolete report'}
+        )
+        return Response(self.get_serializer(item).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'])
     def status_detail(self, request, pk=None):
@@ -505,13 +703,49 @@ class LostItemViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin']:
             return LostItem.objects.all().order_by('-created_at')
-        return LostItem.objects.filter(user=user).order_by('-created_at')
+        return LostItem.objects.filter(user=user).exclude(status=ItemStatus.ARCHIVED).order_by('-created_at')
 
     def get_permissions(self):
+        if self.action in ['archive']:
+            return [IsStaff()]
         return [IsAuthenticated()]
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if not user.is_authenticated or not user.is_active:
+            return Response({'detail': 'Authentication and active account required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not (user.email or user.mobile_number):
+            return Response({'detail': 'Verified institutional identity is required to report lost items.'}, status=status.HTTP_403_FORBIDDEN)
+
+        from .services.fraud_prevention import check_report_rate_limit, detect_duplicate_report
+        is_limited, count = check_report_rate_limit(user, report_type='lost')
+        if is_limited:
+            return Response(
+                {'detail': 'Too many lost item reports submitted recently. Please wait before submitting another report.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        category = request.data.get('category', 'Other')
+        description = request.data.get('description', '')
+        is_dup, existing, reason, is_review_signal = detect_duplicate_report(
+            user, category, description, model_class=LostItem
+        )
+        if is_dup and existing:
+            return Response(
+                {
+                    'detail': f'A matching active lost report already exists ({existing.public_id}). Repeated submissions are prevented to avoid duplicate records and notifications.',
+                    'existing_report_id': existing.public_id,
+                },
+                status=status.HTTP_409_CONFLICT
+            )
+
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         from .services.question_bank import build_question_snapshot, extract_normalized_attributes
+        from .services.fraud_prevention import detect_duplicate_report, detect_and_record_image_upload
+        from audit.models import AuditLog
+
         category = serializer.validated_data.get('category', 'Other')
         raw_answers = serializer.validated_data.get('original_answers') or {}
         if isinstance(raw_answers, str):
@@ -546,6 +780,10 @@ class LostItemViewSet(viewsets.ModelViewSet):
             answers_source = snapshot.get('answers', snapshot) if isinstance(snapshot, dict) else {}
             normalized = extract_normalized_attributes(category, answers_source)
 
+        _, _, reason, is_review_signal = detect_duplicate_report(
+            self.request.user, category, serializer.validated_data.get('description', ''), model_class=LostItem
+        )
+
         public_id = str(uuid.uuid4())
         item = serializer.save(
             public_id=public_id,
@@ -554,7 +792,16 @@ class LostItemViewSet(viewsets.ModelViewSet):
             normalized_attributes=normalized,
         )
 
-        # Handle optional image upload
+        if is_review_signal:
+            AuditLog.objects.create(
+                actor=self.request.user,
+                action='REPORT_FLAGGED_FOR_REVIEW',
+                target_type='LostItem',
+                target_id=item.public_id,
+                details={'reason': reason, 'review_signal': True}
+            )
+
+        # Handle optional image upload & cross-account reuse detection
         images = self.request.FILES.getlist('images') or self.request.FILES.getlist('image')
         content_type_obj = ContentType.objects.get_for_model(LostItem)
         for img in images:
@@ -563,6 +810,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
                 object_id=item.id,
                 image=img
             )
+            detect_and_record_image_upload(img, self.request.user, 'LostItem', item.public_id)
 
         # Automatically evaluate matching against existing published found items
         evaluate_lost_item_matches(item, notify=True)
@@ -626,6 +874,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
+        from audit.models import AuditLog
         try:
             lost_item = LostItem.objects.get(pk=pk)
         except LostItem.DoesNotExist:
@@ -639,6 +888,62 @@ class LostItemViewSet(viewsets.ModelViewSet):
             return Response({'detail': f'Report is already {lost_item.status} and cannot be cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
         lost_item.status = 'CANCELLED'
         lost_item.save(update_fields=['status', 'updated_at'])
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='LOST_REPORT_CANCELLED',
+            target_type='LostItem',
+            target_id=str(lost_item.public_id),
+            details={'reason': 'User requested cancellation of obsolete report'}
+        )
+
+        serializer = self.get_serializer(lost_item)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='archive', permission_classes=[IsStaff])
+    def archive(self, request, pk=None):
+        """
+        Admin-only action to archive/remove a lost item report.
+        Requires an explicit removal reason.
+        Soft-deletes/archives the report and dismisses active matches.
+        Preserves audit trail.
+        """
+        try:
+            lost_item = LostItem.objects.get(pk=pk) if str(pk).isdigit() else LostItem.objects.get(public_id=pk)
+        except LostItem.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        reason = request.data.get('reason', '').strip()
+        if not reason:
+            return Response({'detail': 'Removal/archive reason is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if lost_item.status == ItemStatus.ARCHIVED:
+            return Response({'detail': 'Report is already archived.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.db import transaction
+        from audit.models import AuditLog
+        from items.models import Match, MatchStatus
+
+        with transaction.atomic():
+            lost_item.status = ItemStatus.ARCHIVED
+            lost_item.save(update_fields=['status', 'updated_at'])
+
+            Match.objects.filter(
+                lost_item=lost_item,
+                status__in=[MatchStatus.CANDIDATE, MatchStatus.REVIEWED]
+            ).update(status=MatchStatus.DISMISSED)
+
+            AuditLog.objects.create(
+                actor=request.user,
+                action='REPORT_ARCHIVED',
+                target_type='LostItem',
+                target_id=str(lost_item.public_id),
+                details={
+                    'category': lost_item.category,
+                    'reason': reason,
+                    'admin_email': request.user.email,
+                }
+            )
+
         serializer = self.get_serializer(lost_item)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

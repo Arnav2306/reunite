@@ -33,6 +33,7 @@ class StudentClaimViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ClaimStudentSerializer
     permission_classes = [IsStudent]
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         """
@@ -86,6 +87,44 @@ class StudentClaimViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_429_TOO_MANY_REQUESTS
             )
 
+        # Self-claim prevention: student cannot claim an item they themselves reported finding
+        if item.user == request.user:
+            AuditLog.objects.create(
+                actor=request.user,
+                action='SELF_CLAIM_ATTEMPT_FLAGGED',
+                target_type='FoundItem',
+                target_id=str(item.public_id),
+                details={'reason': 'User attempted to claim item they reported finding', 'review_signal': True}
+            )
+            return Response(
+                {'detail': 'You cannot claim an item that you reported finding. If this was reported by mistake, please contact custodial staff.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Self-matching pair check: recovery based on a self-reported pair alone is forbidden
+        from items.models import Match
+        self_match = Match.objects.filter(
+            lost_item__user=request.user,
+            found_item=item,
+            score_breakdown__self_match=True
+        ).exists()
+        if self_match:
+            AuditLog.objects.create(
+                actor=request.user,
+                action='SELF_MATCH_CLAIM_BLOCKED',
+                target_type='FoundItem',
+                target_id=str(item.public_id),
+                details={'reason': 'Self-matching pair cannot be used for recovery without staff review', 'review_signal': True}
+            )
+            return Response(
+                {'detail': 'This item was flagged as matching your own found report. Recovery based on a self-reported pair is not permitted. Please visit the custodial office for manual verification.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Collusion and questionable claim history check (review signal)
+        from items.services.fraud_prevention import check_questionable_claim_history
+        check_questionable_claim_history(request.user)
+
         # Friendly pre-check: prevents a confusing IntegrityError message
         existing_claim = Claim.objects.filter(
             student=request.user,
@@ -99,7 +138,7 @@ class StudentClaimViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if item.status in [ItemStatus.RESOLVED, ItemStatus.HANDOVER]:
+        if item.status in [ItemStatus.RESOLVED, ItemStatus.HANDOVER, ItemStatus.ARCHIVED]:
             return Response(
                 {'detail': 'This item is no longer available for claim.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -157,6 +196,22 @@ class StudentClaimViewSet(viewsets.ModelViewSet):
         _attach_handover_records(qs)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='regenerate-otp')
+    def regenerate_otp(self, request, public_id=None):
+        claim = self.get_object()
+        if claim.status != ClaimStatus.APPROVED:
+            return Response({'detail': 'OTP can only be regenerated for approved claims.'}, status=status.HTTP_400_BAD_REQUEST)
+        pr = claim.pickup_requests.first()
+        handover = getattr(pr, 'handover', None) if pr else None
+        if not handover:
+            return Response({'detail': 'No handover record found for this claim.'}, status=status.HTTP_404_NOT_FOUND)
+        from handovers.services import regenerate_otp as service_regenerate_otp
+        raw_otp = service_regenerate_otp(handover, requested_by=request.user)
+        return Response({
+            'detail': 'A new secure pickup OTP has been generated and delivered to your notifications.',
+            'otp': raw_otp
+        }, status=status.HTTP_200_OK)
 
 
 class StaffClaimViewSet(viewsets.ModelViewSet):
@@ -225,6 +280,33 @@ class StaffClaimViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Prevent approval if there is an active dispute on this item or claim
+        from pickup.models import Dispute, DisputeStatus, VerificationResult
+        from django.db.models import Q
+        open_dispute = Dispute.objects.filter(
+            Q(claim=claim) | Q(found_item=claim.found_item),
+            status__in=[DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW, DisputeStatus.INFO_REQUESTED]
+        ).first()
+        if open_dispute:
+            return Response(
+                {'detail': f'Cannot approve claim: an active dispute ({open_dispute.public_id}) is currently pending on this item. Resolve disputes before approval.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if claim.found_item.status == ItemStatus.ARCHIVED:
+            return Response(
+                {'detail': 'Cannot approve claim: found item has been archived.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Enforce that ownership verification workflow response exists and is non-empty
+        verif = getattr(claim, 'verification', None)
+        if not verif or not (verif.student_answer and verif.student_answer.strip()):
+            return Response(
+                {'detail': 'Cannot approve claim: ownership verification response is missing or empty.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         item = claim.found_item
         is_valuable = (item.risk_tier == 1)
 
@@ -233,6 +315,9 @@ class StaffClaimViewSet(viewsets.ModelViewSet):
             if request.data.get('admin_notes'):
                 claim.admin_notes = request.data.get('admin_notes')
             claim.save()
+
+            verif.verification_result = VerificationResult.VERIFIED
+            verif.save(update_fields=['verification_result'])
 
             # Update item lifecycle status
             item.status = ItemStatus.READY_FOR_PICKUP
@@ -297,9 +382,11 @@ class StaffClaimViewSet(viewsets.ModelViewSet):
                 f"Your item is ready for collection at {cp_label}."
             )
             if is_valuable and otp_code:
+                from handovers.services import get_otp_expiry_minutes
+                expiry_min = get_otp_expiry_minutes()
                 notif_msg += (
                     f" This is a valuable item. Your secure pickup OTP is: {otp_code}"
-                    f" (Valid for 24 hours)."
+                    f" (Valid for {expiry_min} minutes). Present this at the custodial collection desk with your student ID."
                 )
 
             Notification.objects.create(

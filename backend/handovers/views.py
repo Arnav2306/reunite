@@ -40,8 +40,28 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
         if not otp:
             return Response({'detail': 'OTP code is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Check for open disputes
+        from pickup.models import Dispute, DisputeStatus
+        open_dispute = Dispute.objects.filter(
+            found_item=handover.found_item,
+            status__in=[DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW, DisputeStatus.INFO_REQUESTED]
+        ).first()
+        if open_dispute:
+            return Response(
+                {'detail': f'Cannot complete handover: an active dispute ({open_dispute.public_id}) is currently pending on this item. Resolve disputes before handover.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Validate OTP using service (raises ValidationError if invalid/expired/locked)
         verify_otp(handover, otp)
+
+        # Enforce that ownership verification workflow exists and claim is approved
+        claim = handover.pickup_request.claim
+        if claim and claim.status != 'APPROVED':
+            return Response(
+                {'detail': 'Cannot complete handover: associated claim is not approved.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Transactionally complete handover and resolve item & pickup request
         with transaction.atomic():
@@ -59,12 +79,31 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
             item.status = ItemStatus.RESOLVED
             item.save()
 
+            # Resolve linked student lost reports and mark match claimed
+            from items.models import Match, MatchStatus
+            linked_matches = Match.objects.filter(found_item=item, lost_item__user=handover.student)
+            for m in linked_matches:
+                if m.lost_item.status != ItemStatus.RESOLVED:
+                    m.lost_item.status = ItemStatus.RESOLVED
+                    m.lost_item.save(update_fields=['status', 'updated_at'])
+                m.status = MatchStatus.CLAIMED
+                m.save(update_fields=['status', 'updated_at'])
+
             AuditLog.objects.create(
                 actor=request.user,
                 action='OTP_VERIFICATION_SUCCESS',
                 target_type='Handover',
                 target_id=str(handover.public_id),
-                details={'item_title': item.title, 'student_email': handover.student.email}
+                details={
+                    'item_title': item.title,
+                    'item_id': str(item.public_id),
+                    'student_id': handover.student.id,
+                    'student_email': handover.student.email,
+                    'student_name': handover.student.name,
+                    'custodian_id': request.user.id,
+                    'custodian_email': request.user.email,
+                    'timestamp': handover.confirmed_at.isoformat(),
+                }
             )
 
             AuditLog.objects.create(
@@ -72,7 +111,15 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
                 action='HANDOVER_COMPLETED',
                 target_type='Handover',
                 target_id=str(handover.public_id),
-                details={'item_title': item.title, 'is_valuable': True}
+                details={
+                    'item_title': item.title,
+                    'item_id': str(item.public_id),
+                    'is_valuable': True,
+                    'recipient_id': handover.student.id,
+                    'recipient_email': handover.student.email,
+                    'staff_member': request.user.email,
+                    'confirmed_at': handover.confirmed_at.isoformat(),
+                }
             )
 
             Notification.objects.create(
@@ -94,6 +141,33 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
         if handover.status == HandoverStatus.COMPLETED:
             return Response({'detail': 'Handover is already completed.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Enforce that valuable items cannot bypass OTP verification
+        if handover.is_valuable:
+            return Response(
+                {'detail': 'Valuable items require secure OTP verification before handover and cannot be completed via general collection.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check for open disputes
+        from pickup.models import Dispute, DisputeStatus
+        open_dispute = Dispute.objects.filter(
+            found_item=handover.found_item,
+            status__in=[DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW, DisputeStatus.INFO_REQUESTED]
+        ).first()
+        if open_dispute:
+            return Response(
+                {'detail': f'Cannot complete handover: an active dispute ({open_dispute.public_id}) is currently pending on this item. Resolve disputes before handover.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Enforce that ownership verification workflow exists and claim is approved
+        claim = handover.pickup_request.claim
+        if claim and claim.status != 'APPROVED':
+            return Response(
+                {'detail': 'Cannot complete handover: associated claim is not approved.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         with transaction.atomic():
             handover.status = HandoverStatus.COMPLETED
             handover.custodian = request.user
@@ -108,12 +182,30 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
             item.status = ItemStatus.RESOLVED
             item.save()
 
+            # Resolve linked student lost reports and mark match claimed
+            from items.models import Match, MatchStatus
+            linked_matches = Match.objects.filter(found_item=item, lost_item__user=handover.student)
+            for m in linked_matches:
+                if m.lost_item.status != ItemStatus.RESOLVED:
+                    m.lost_item.status = ItemStatus.RESOLVED
+                    m.lost_item.save(update_fields=['status', 'updated_at'])
+                m.status = MatchStatus.CLAIMED
+                m.save(update_fields=['status', 'updated_at'])
+
             AuditLog.objects.create(
                 actor=request.user,
                 action='HANDOVER_COMPLETED',
                 target_type='Handover',
                 target_id=str(handover.public_id),
-                details={'item_title': item.title, 'is_valuable': False}
+                details={
+                    'item_title': item.title,
+                    'item_id': str(item.public_id),
+                    'is_valuable': False,
+                    'recipient_id': handover.student.id,
+                    'recipient_email': handover.student.email,
+                    'staff_member': request.user.email,
+                    'confirmed_at': handover.confirmed_at.isoformat(),
+                }
             )
 
             Notification.objects.create(
@@ -123,4 +215,15 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
                 notification_type='HANDOVER_COMPLETED'
             )
 
+        return Response(self.get_serializer(handover).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='regenerate-otp')
+    def regenerate_otp_action(self, request, pk=None):
+        """
+        Regenerates a secure OTP for valuable items upon staff request.
+        Invalidates previous codes and delivers new code to the recipient.
+        """
+        handover = self.get_object()
+        from .services import regenerate_otp
+        regenerate_otp(handover, requested_by=request.user)
         return Response(self.get_serializer(handover).data, status=status.HTTP_200_OK)

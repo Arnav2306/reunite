@@ -15,18 +15,30 @@ class IsCustodian(BasePermission):
 
 class IsAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'admin'
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            (getattr(request.user, 'role', '') in ['admin', 'superadmin'] or getattr(request.user, 'is_superuser', False))
+        )
 
 
 class IsSuperAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'superadmin'
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            (getattr(request.user, 'role', '') == 'superadmin' or getattr(request.user, 'is_superuser', False))
+        )
 
 
 class IsStaff(BasePermission):
     """Custodian, Admin, or SuperAdmin"""
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['custodian', 'admin', 'superadmin']
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            (getattr(request.user, 'role', '') in ['custodian', 'admin', 'superadmin'] or getattr(request.user, 'is_staff', False))
+        )
 
 
 class IsOwner(BasePermission):

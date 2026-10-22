@@ -81,11 +81,11 @@ export const App: React.FC = () => {
                     {/* Student: Matches */}
                     <Route path="/matches" element={<MatchesPage />} />
                     <Route path="/my-matches" element={<MatchesPage />} />
+                  </Route>
 
-                    {/* Admin: Register Found Item (HOD Cabin workflow — admin/staff only) */}
+                  {/* Admin Only Routes (Restricted to Custodian, Admin, Superadmin) */}
+                  <Route element={<ProtectedRoute allowedRoles={['custodian', 'admin', 'superadmin']} />}>
                     <Route path="/admin/register-found" element={<RegisterFoundItemPage />} />
-
-                    {/* Admin: Other operations */}
                     <Route path="/admin/verification" element={<AdminVerificationPage />} />
                     <Route path="/admin/handovers" element={<AdminHandoverPage />} />
                     <Route path="/admin/collection-points" element={<AdminCollectionPointsPage />} />

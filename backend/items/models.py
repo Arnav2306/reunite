@@ -18,6 +18,7 @@ class ItemStatus(models.TextChoices):
     HANDOVER = 'HANDOVER', _('Handover')
     RESOLVED = 'RESOLVED', _('Resolved')
     CANCELLED = 'CANCELLED', _('Cancelled')
+    ARCHIVED = 'ARCHIVED', _('Archived')
 
 class LostItem(models.Model):
     public_id = models.CharField(max_length=36, unique=True)
