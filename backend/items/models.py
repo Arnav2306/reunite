@@ -20,6 +20,29 @@ class ItemStatus(models.TextChoices):
     CANCELLED = 'CANCELLED', _('Cancelled')
     ARCHIVED = 'ARCHIVED', _('Archived')
 
+import secrets
+
+def generate_report_id(prefix: str) -> str:
+    """
+    Generates a unique, permanent, human-readable ID (e.g. RNT-L-7K4P9X, RNT-F-8M2Q6W).
+    Uses un-ambiguous uppercase alphanumeric characters.
+    """
+    alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
+    code = ''.join(secrets.choice(alphabet) for _ in range(6))
+    return f"{prefix}-{code}"
+
+def generate_lost_id() -> str:
+    while True:
+        candidate = generate_report_id('RNT-L')
+        if not LostItem.objects.filter(public_id=candidate).exists():
+            return candidate
+
+def generate_found_id() -> str:
+    while True:
+        candidate = generate_report_id('RNT-F')
+        if not FoundItem.objects.filter(public_id=candidate).exists():
+            return candidate
+
 class LostItem(models.Model):
     public_id = models.CharField(max_length=36, unique=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lost_items')
@@ -31,6 +54,11 @@ class LostItem(models.Model):
     risk_tier = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_lost_id()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"LostItem {self.public_id}"
@@ -72,6 +100,11 @@ class FoundItem(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_found_id()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"FoundItem {self.title or self.public_id}"

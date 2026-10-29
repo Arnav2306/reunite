@@ -460,7 +460,7 @@ export const StudentReportFoundPage: React.FC = () => {
               </span>
               <h3 className="font-bold text-slate-900 text-sm mt-1 truncate">{title || category}</h3>
               <p className="text-xs text-slate-500 truncate">{category} · {foundLocation || 'Campus premises'}</p>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">ID: {successId.substring(0, 8)}</p>
+              <p className="text-xs text-teal-800 font-mono font-bold mt-1 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 inline-block">Report ID: {successId}</p>
             </div>
           </div>
 

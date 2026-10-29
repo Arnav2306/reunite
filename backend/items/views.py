@@ -9,8 +9,9 @@ from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 
+from django.shortcuts import get_object_or_404
 from accounts.permissions import IsStaff, IsStudent
-from .models import FoundItem, LostItem, ItemImage, ItemStatus, Match, MatchStatus
+from .models import FoundItem, LostItem, ItemImage, ItemStatus, Match, MatchStatus, generate_found_id, generate_lost_id
 from .serializers import (
     FoundItemAdminSerializer,
     AvailableItemPublicSerializer,
@@ -39,16 +40,27 @@ class FoundItemAdminViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = FoundItem.objects.all().order_by('-created_at')
         
+        # Exact ID search
+        exact_id = self.request.query_params.get('exact_id')
+        if exact_id:
+            return qs.filter(public_id__iexact=exact_id.strip())
+
         # Filtering
         search = self.request.query_params.get('search')
         if search:
-            qs = qs.filter(
-                Q(title__icontains=search) |
-                Q(description__icontains=search) |
-                Q(serial_number__icontains=search) |
-                Q(finder__icontains=search) |
-                Q(found_location__icontains=search)
-            )
+            search_str = search.strip()
+            # Direct exact match check
+            if qs.filter(public_id__iexact=search_str).exists():
+                qs = qs.filter(public_id__iexact=search_str)
+            else:
+                qs = qs.filter(
+                    Q(public_id__icontains=search_str) |
+                    Q(title__icontains=search_str) |
+                    Q(description__icontains=search_str) |
+                    Q(serial_number__icontains=search_str) |
+                    Q(finder__icontains=search_str) |
+                    Q(found_location__icontains=search_str)
+                )
 
         category = self.request.query_params.get('category')
         if category and category != 'all':
@@ -74,8 +86,24 @@ class FoundItemAdminViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        public_id = str(uuid.uuid4())
+        from audit.models import AuditLog
+        public_id = generate_found_id()
         item = serializer.save(public_id=public_id, user=self.request.user)
+
+        if item.status == ItemStatus.DEPOSITED:
+            if not item.collection_point:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError({'status': 'An item cannot be marked as DEPOSITED without an assigned physical collection point.'})
+            AuditLog.objects.create(
+                actor=self.request.user,
+                action='PHYSICAL_DEPOSIT_CONFIRMED',
+                target_type='FoundItem',
+                target_id=str(item.public_id),
+                details={
+                    'station_code': item.collection_point.station_code if item.collection_point else None,
+                    'custodian_email': self.request.user.email,
+                }
+            )
 
         # Process uploaded images from multipart request
         images = self.request.FILES.getlist('images') or self.request.FILES.getlist('image')
@@ -579,7 +607,7 @@ class StudentFoundItemViewSet(viewsets.ModelViewSet):
         from .services.fraud_prevention import detect_duplicate_report, detect_and_record_image_upload
         from audit.models import AuditLog
 
-        public_id = str(uuid.uuid4())
+        public_id = generate_found_id()
         cannot_carry = serializer.validated_data.get('cannot_carry', False)
         category = serializer.validated_data.get('category', 'Other')
         description = serializer.validated_data.get('description', '')
@@ -702,8 +730,38 @@ class LostItemViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if hasattr(user, 'role') and user.role in ['custodian', 'admin', 'superadmin']:
-            return LostItem.objects.all().order_by('-created_at')
-        return LostItem.objects.filter(user=user).exclude(status=ItemStatus.ARCHIVED).order_by('-created_at')
+            qs = LostItem.objects.all().order_by('-created_at')
+        else:
+            qs = LostItem.objects.filter(user=user).exclude(status=ItemStatus.ARCHIVED).order_by('-created_at')
+
+        # Exact ID search
+        exact_id = self.request.query_params.get('exact_id')
+        if exact_id:
+            return qs.filter(public_id__iexact=exact_id.strip())
+
+        search = self.request.query_params.get('search')
+        if search:
+            search_str = search.strip()
+            if qs.filter(public_id__iexact=search_str).exists():
+                qs = qs.filter(public_id__iexact=search_str)
+            else:
+                qs = qs.filter(
+                    Q(public_id__icontains=search_str) |
+                    Q(description__icontains=search_str) |
+                    Q(category__icontains=search_str)
+                )
+
+        return qs
+
+    def get_object(self):
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_val = self.kwargs.get(lookup_url_kwarg, self.kwargs.get('pk'))
+        if str(lookup_val).isdigit():
+            obj = get_object_or_404(self.get_queryset(), pk=int(lookup_val))
+        else:
+            obj = get_object_or_404(self.get_queryset(), public_id=lookup_val)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_permissions(self):
         if self.action in ['archive']:
@@ -784,7 +842,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
             self.request.user, category, serializer.validated_data.get('description', ''), model_class=LostItem
         )
 
-        public_id = str(uuid.uuid4())
+        public_id = generate_lost_id()
         item = serializer.save(
             public_id=public_id,
             user=self.request.user,
@@ -818,7 +876,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def matches(self, request, pk=None):
         try:
-            lost_item = LostItem.objects.get(pk=pk)
+            lost_item = LostItem.objects.get(pk=pk) if str(pk).isdigit() else LostItem.objects.get(public_id=pk)
         except LostItem.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         user = request.user
@@ -838,7 +896,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='run-matching')
     def run_matching(self, request, pk=None):
         try:
-            lost_item = LostItem.objects.get(pk=pk)
+            lost_item = LostItem.objects.get(pk=pk) if str(pk).isdigit() else LostItem.objects.get(public_id=pk)
         except LostItem.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         user = request.user
@@ -857,7 +915,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, pk=None):
         try:
-            lost_item = LostItem.objects.get(pk=pk)
+            lost_item = LostItem.objects.get(pk=pk) if str(pk).isdigit() else LostItem.objects.get(public_id=pk)
         except LostItem.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         user = request.user
@@ -876,7 +934,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
     def cancel(self, request, pk=None):
         from audit.models import AuditLog
         try:
-            lost_item = LostItem.objects.get(pk=pk)
+            lost_item = LostItem.objects.get(pk=pk) if str(pk).isdigit() else LostItem.objects.get(public_id=pk)
         except LostItem.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         user = request.user

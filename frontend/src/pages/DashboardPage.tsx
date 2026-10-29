@@ -9,8 +9,11 @@ import {
   PlusCircle, CheckCircle2, Package,
   Sparkles, MapPin, Eye, X,
   ShieldAlert, RefreshCw, Star, ClipboardList,
-  History, MessageSquare, Trash2, AlertTriangle
+  History, MessageSquare, Trash2, AlertTriangle,
+  Printer, QrCode
 } from 'lucide-react';
+import { QrScannerModal } from '../components/QrScannerModal';
+import { CustodianHandoverModal } from '../components/CustodianHandoverModal';
 
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
@@ -94,6 +97,12 @@ export const DashboardPage: React.FC = () => {
   const [adminReportTypeFilter, setAdminReportTypeFilter] = useState<'all' | 'found' | 'lost' | 'suspicious'>('all');
   const [adminStatusFilter, setAdminStatusFilter] = useState('all');
   const [adminCategoryFilter, setAdminCategoryFilter] = useState('all');
+  const [adminExactIdOnly, setAdminExactIdOnly] = useState(false);
+  const [printLabelItem, setPrintLabelItem] = useState<{ id: string; category: string; title: string; location?: string; date?: string } | null>(null);
+
+  // QR Scanner & Custodian Handover Modal (Dashboard-level)
+  const [dashboardScannerOpen, setDashboardScannerOpen] = useState(false);
+  const [dashboardHandoverFoundId, setDashboardHandoverFoundId] = useState<string | null>(null);
 
   // Admin archive modal state
   const [archiveTarget, setArchiveTarget] = useState<{ type: 'found' | 'lost'; id: string; title: string } | null>(null);
@@ -198,17 +207,21 @@ export const DashboardPage: React.FC = () => {
       if (adminCategoryFilter !== 'all' && r.category.toLowerCase() !== adminCategoryFilter.toLowerCase()) return false;
 
       if (adminSearchQuery.trim()) {
-        const q = adminSearchQuery.toLowerCase();
-        const matchesTitle = r.title.toLowerCase().includes(q);
-        const matchesCat = r.category.toLowerCase().includes(q);
-        const matchesId = r.id.toLowerCase().includes(q);
-        const matchesLoc = r.location.toLowerCase().includes(q);
-        if (!matchesTitle && !matchesCat && !matchesId && !matchesLoc) return false;
+        const q = adminSearchQuery.trim().toLowerCase();
+        if (adminExactIdOnly) {
+          if (r.id.toLowerCase() !== q) return false;
+        } else {
+          const matchesTitle = r.title.toLowerCase().includes(q);
+          const matchesCat = r.category.toLowerCase().includes(q);
+          const matchesId = r.id.toLowerCase().includes(q);
+          const matchesLoc = r.location.toLowerCase().includes(q);
+          if (!matchesTitle && !matchesCat && !matchesId && !matchesLoc) return false;
+        }
       }
 
       return true;
     });
-  }, [isStaff, recoveryQueue, adminLostReports, auditLogs, adminReportTypeFilter, adminStatusFilter, adminCategoryFilter, adminSearchQuery]);
+  }, [isStaff, recoveryQueue, adminLostReports, auditLogs, adminReportTypeFilter, adminStatusFilter, adminCategoryFilter, adminSearchQuery, adminExactIdOnly]);
 
   // Student feedback state
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -816,6 +829,15 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            id="btn-dashboard-scan-qr"
+            type="button"
+            onClick={() => setDashboardScannerOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-300 hover:bg-blue-100 rounded-xl transition-colors shadow-2xs"
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            Scan Item QR
+          </button>
           <Link
             to="/admin/collection-points"
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-colors shadow-2xs"
@@ -959,15 +981,33 @@ export const DashboardPage: React.FC = () => {
 
             {/* Filter and Search Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search title, category, ID..."
-                  value={adminSearchQuery}
-                  onChange={(e) => setAdminSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="space-y-1">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder={adminExactIdOnly ? "Exact ID (e.g. RNT-F-8M2Q6W)..." : "Search title, category, ID..."}
+                    value={adminSearchQuery}
+                    onChange={(e) => setAdminSearchQuery(e.target.value)}
+                    className={`w-full pl-9 pr-3 py-2 text-xs border rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 ${
+                      adminExactIdOnly ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-300 dark:border-slate-600 focus:ring-blue-500'
+                    }`}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] px-1">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-300 font-medium select-none">
+                    <input
+                      type="checkbox"
+                      checked={adminExactIdOnly}
+                      onChange={(e) => setAdminExactIdOnly(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                    />
+                    Exact-ID Search
+                  </label>
+                  {adminExactIdOnly && adminSearchQuery.trim() && (
+                    <span className="text-blue-600 dark:text-blue-400 font-mono text-[10px]">Filtering exact ID</span>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -1048,7 +1088,9 @@ export const DashboardPage: React.FC = () => {
                     <tr key={`${r.reportType}-${r.id}`} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900 dark:text-white">{r.title}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">ID: {r.id.substring(0, 8)} · {r.category}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          ID: <span className="font-bold text-slate-700 dark:text-slate-300">{r.id}</span> · {r.category}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
@@ -1101,6 +1143,22 @@ export const DashboardPage: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="inline-flex items-center justify-end gap-1.5">
+                          {r.reportType === 'found' && (
+                            <button
+                              onClick={() => setPrintLabelItem({
+                                id: r.id,
+                                category: r.category,
+                                title: r.title,
+                                location: r.location,
+                                date: r.date,
+                              })}
+                              className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/40 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded-lg shadow-2xs transition-colors"
+                              title="Print Physical Custodial Tag"
+                            >
+                              <Printer className="w-3.5 h-3.5 mr-1 text-teal-600" />
+                              Label
+                            </button>
+                          )}
                           {r.canInspect && (
                             <button
                               onClick={() => setInspectingCaseId(r.id)}
@@ -1349,16 +1407,31 @@ export const DashboardPage: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    Administrative Case Audit File
-                  </span>
-                  <h2 className="text-xl font-bold text-slate-900 mt-1">
-                    {caseDetail.item.title || caseDetail.item.category}
-                  </h2>
-                  <p className="text-xs text-slate-500 font-mono">
-                    Public Case UUID: {caseDetail.item.public_id}
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      Administrative Case Audit File
+                    </span>
+                    <h2 className="text-xl font-bold text-slate-900 mt-1">
+                      {caseDetail.item.title || caseDetail.item.category}
+                    </h2>
+                    <p className="text-xs text-slate-600 font-mono mt-0.5">
+                      Found Report ID: <strong className="text-blue-800">{caseDetail.item.public_id}</strong>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setPrintLabelItem({
+                      id: caseDetail.item.public_id,
+                      category: caseDetail.item.category,
+                      title: caseDetail.item.title || caseDetail.item.category,
+                      location: caseDetail.item.collection_location?.station_code || caseDetail.item.found_location,
+                      date: caseDetail.item.found_date || caseDetail.item.published_at || (caseDetail.item as any).created_at,
+                    })}
+                    className="inline-flex items-center px-3 py-1.5 text-xs font-bold text-teal-800 bg-teal-50 border border-teal-300 hover:bg-teal-100 rounded-xl transition-colors shadow-2xs self-start"
+                  >
+                    <Printer className="w-3.5 h-3.5 mr-1.5 text-teal-600" />
+                    Print Custodial Tag
+                  </button>
                 </div>
 
                 {/* Section 11.1: Item */}
@@ -1561,6 +1634,124 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Found Item Printable Custodial Tag Modal */}
+      {printLabelItem && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative">
+            <div className="flex items-center justify-between no-print border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-teal-600" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Print Physical Tag</h3>
+              </div>
+              <button
+                onClick={() => setPrintLabelItem(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Printable Tag Container */}
+            <div id="reunite-printable-tag" className="border-2 border-dashed border-slate-400 p-5 rounded-2xl bg-white text-slate-900 space-y-4">
+              <div className="text-center border-b pb-3 border-slate-200">
+                <span className="text-[10px] font-extrabold tracking-widest uppercase text-slate-500">
+                  REUNITE · CAMPUS CUSTODIAL RECOVERY
+                </span>
+                <h2 className="text-lg font-black tracking-tight text-slate-900 mt-0.5">
+                  FOUND ITEM TAG
+                </h2>
+              </div>
+
+              {/* ID & Category */}
+              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                  Found Reference ID
+                </span>
+                <span className="font-mono text-2xl font-black text-slate-900 tracking-wider block mt-0.5">
+                  {printLabelItem.id}
+                </span>
+                <span className="inline-block mt-1 text-xs font-bold uppercase tracking-wide bg-teal-100 text-teal-900 px-2.5 py-0.5 rounded">
+                  {printLabelItem.category}
+                </span>
+              </div>
+
+              {/* Item Details */}
+              <div className="text-xs space-y-1.5 px-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Description:</span>
+                  <span className="font-semibold text-slate-800 text-right truncate max-w-[200px]">{printLabelItem.title}</span>
+                </div>
+                {printLabelItem.location && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Station / Loc:</span>
+                    <span className="font-semibold text-slate-800">{printLabelItem.location}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Logged Date:</span>
+                  <span className="font-semibold text-slate-800">
+                    {new Date(printLabelItem.date || Date.now()).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+
+              {/* QR Code Identification Tag */}
+              <div className="text-center pt-2 border-t border-slate-200 space-y-2">
+                <div className="w-32 h-32 mx-auto p-2 bg-white border border-slate-300 rounded-xl flex items-center justify-center shadow-2xs">
+                  <QrCode className="w-24 h-24 text-slate-900" />
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">
+                  Report ID: {printLabelItem.id}
+                </div>
+              </div>
+
+              {/* Security Warning Notice */}
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[10px] text-center font-bold uppercase tracking-tight leading-snug">
+                Physical Receipt Required Before Deposit. An ID alone does not authorize ownership or pickup.
+              </div>
+            </div>
+
+            {/* Print Controls */}
+            <div className="flex items-center justify-end gap-2 pt-2 no-print">
+              <button
+                type="button"
+                onClick={() => setPrintLabelItem(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.print();
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs flex items-center gap-1.5"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print Label
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dashboard-level QR Scanner Modal */}
+      <QrScannerModal
+        isOpen={dashboardScannerOpen}
+        onClose={() => setDashboardScannerOpen(false)}
+        onScanSuccess={(foundId) => {
+          setDashboardScannerOpen(false);
+          setDashboardHandoverFoundId(foundId.trim().toUpperCase());
+        }}
+      />
+
+      {/* Dashboard-level Custodian Handover Modal */}
+      <CustodianHandoverModal
+        foundId={dashboardHandoverFoundId}
+        isOpen={!!dashboardHandoverFoundId}
+        onClose={() => setDashboardHandoverFoundId(null)}
+      />
     </div>
   );
 };

@@ -730,6 +730,7 @@ export const ReportLostItemPage: React.FC = () => {
 
   const [formError, setFormError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
 
   // Load question bank from backend API
   const { data: apiQuestionBank } = useQuery<QuestionBankResponse>({
@@ -792,13 +793,15 @@ export const ReportLostItemPage: React.FC = () => {
       formData.append('normalized_attributes', JSON.stringify(normalizedAttributes));
       if (imageFile) formData.append('image', imageFile);
 
-      await apiRequest('/api/items/lost-items/', {
+      const created = await apiRequest<{ id: number; public_id: string }>('/api/items/lost-items/', {
         method: 'POST',
         body: formData,
         headers: {},
       });
+      return created;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setSubmittedReportId(data?.public_id || null);
       setSubmitted(true);
       setFormError(null);
     },
@@ -840,6 +843,14 @@ export const ReportLostItemPage: React.FC = () => {
             "Your report could help bring your belongings back."
             Reunite's matching engine is now monitoring newly deposited campus items.
           </p>
+
+          {submittedReportId && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl max-w-sm mx-auto text-center space-y-1">
+              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">Unique Report Reference ID</span>
+              <p className="font-mono font-extrabold text-lg text-blue-900">{submittedReportId}</p>
+              <p className="text-[11px] text-slate-500">Provide this ID to custodial desks to quickly locate your case.</p>
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
             <button
               onClick={() => navigate('/dashboard')}

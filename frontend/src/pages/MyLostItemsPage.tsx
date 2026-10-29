@@ -233,8 +233,8 @@ export const MyLostItemsPage: React.FC = () => {
                         <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>Approx. Date: <strong className="text-slate-700 font-medium">{lostDate}</strong></span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                        <span>Report ID: <code className="font-mono text-slate-500">{report.public_id.slice(0, 8)}</code></span>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <span>Report ID: <code className="font-mono font-semibold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{report.public_id}</code></span>
                       </div>
                     </div>
 
@@ -306,9 +306,12 @@ export const MyLostItemsPage: React.FC = () => {
               <h2 className="text-xl font-bold text-slate-900">
                 {selectedReport.description}
               </h2>
-              <p className="text-xs text-slate-400 mt-1 font-mono">
-                Report Reference ID: {selectedReport.public_id}
-              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-slate-500 font-medium">Report Reference ID:</span>
+                <span className="font-mono font-bold text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  {selectedReport.public_id}
+                </span>
+              </div>
             </div>
 
             {/* Report Information Grid */}

@@ -2,12 +2,30 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../services/api';
 import type { Handover } from '../types/recovery';
-import { ShieldCheck, KeyRound, CheckCircle, AlertCircle, Loader2, User, Package } from 'lucide-react';
+import {
+  ShieldCheck,
+  KeyRound,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  User,
+  Package,
+  QrCode,
+  Search,
+  ExternalLink,
+} from 'lucide-react';
+import { QrScannerModal } from '../components/QrScannerModal';
+import { CustodianHandoverModal } from '../components/CustodianHandoverModal';
 
 export const AdminHandoverPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [otpInputs, setOtpInputs] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<Record<string, string | null>>({});
+
+  // QR Scanner & Handover modal state
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [handoverModalFoundId, setHandoverModalFoundId] = useState<string | null>(null);
+  const [manualFoundId, setManualFoundId] = useState('');
 
   const queryClient = useQueryClient();
 
@@ -79,28 +97,86 @@ export const AdminHandoverPage: React.FC = () => {
     setOtpInputs((prev) => ({ ...prev, [handoverId]: val }));
   };
 
+  // Handle QR scan result — extract found ID and open handover modal
+  const handleQrScan = (foundId: string) => {
+    setScannerOpen(false);
+    setHandoverModalFoundId(foundId.trim().toUpperCase());
+  };
+
+  // Handle manual Found ID search
+  const handleManualSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = manualFoundId.trim().toUpperCase();
+    if (trimmed) {
+      setHandoverModalFoundId(trimmed);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Admin Handover & OTP Center</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Perform physical handover verification for approved items. Verify 6-digit OTPs for valuable items or confirm physical collection for general items.
-          </p>
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Admin Handover &amp; OTP Center</h1>
+            <p className="text-sm text-slate-600 mt-1">
+              Perform physical handover verification for approved items. Scan a Found Item QR code or enter the Found ID manually to inspect and process handover.
+            </p>
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white shrink-0"
+          >
+            <option value="all">All Handovers</option>
+            <option value="READY">Ready for Collection</option>
+            <option value="PENDING_OTP">Pending OTP Verification</option>
+            <option value="COMPLETED">Completed Handovers</option>
+            <option value="FAILED">Failed / Locked</option>
+          </select>
         </div>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900 bg-white"
-        >
-          <option value="all">All Handovers</option>
-          <option value="READY">Ready for Collection</option>
-          <option value="PENDING_OTP">Pending OTP Verification</option>
-          <option value="COMPLETED">Completed Handovers</option>
-          <option value="FAILED">Failed / Locked</option>
-        </select>
+        {/* QR Scan + Manual Search Row */}
+        <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-slate-100">
+          {/* Scan QR Button */}
+          <button
+            id="btn-scan-item-qr"
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs transition-colors shrink-0"
+          >
+            <QrCode className="w-4 h-4" />
+            Scan Item QR
+          </button>
+
+          {/* Manual Found ID Search */}
+          <form
+            id="form-manual-found-id-search"
+            onSubmit={handleManualSearch}
+            className="flex flex-1 gap-2"
+          >
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                id="input-manual-found-id"
+                type="text"
+                placeholder="Enter Found ID manually — e.g. RNT-F-8M2Q6W"
+                value={manualFoundId}
+                onChange={(e) => setManualFoundId(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 text-sm font-mono border border-slate-300 rounded-lg bg-slate-50 focus:outline-hidden focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+              />
+            </div>
+            <button
+              id="btn-manual-found-id-lookup"
+              type="submit"
+              disabled={!manualFoundId.trim()}
+              className="px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-xs transition-colors shrink-0"
+            >
+              Lookup
+            </button>
+          </form>
+        </div>
       </div>
 
       {isLoading ? (
@@ -118,6 +194,9 @@ export const AdminHandoverPage: React.FC = () => {
           <h3 className="text-base font-bold text-slate-800">No handovers pending</h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
             There are currently no active handovers matching status <span className="font-semibold">{statusFilter}</span>.
+          </p>
+          <p className="text-xs text-slate-400 mt-3">
+            Use the <span className="font-semibold">Scan Item QR</span> button or enter a Found ID above to look up any item directly.
           </p>
         </div>
       ) : (
@@ -160,6 +239,13 @@ export const AdminHandoverPage: React.FC = () => {
                       <span>Category / Risk:</span>
                       <span className="font-semibold">{item?.category}</span> ({handover.is_valuable ? 'Valuable Item' : 'General Item'})
                     </div>
+                    {item?.public_id && (
+                      <div className="flex items-center space-x-1.5">
+                        <QrCode className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Found ID:</span>
+                        <span className="font-mono font-semibold text-blue-700">{item.public_id}</span>
+                      </div>
+                    )}
                   </div>
 
                   {err && (
@@ -171,11 +257,24 @@ export const AdminHandoverPage: React.FC = () => {
                 </div>
 
                 {/* Handover Action Footer */}
-                <div className="pt-3 border-t border-slate-100">
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  {/* Inspect & Handover quick-access button (opens modal by found_item public_id) */}
+                  {item?.public_id && handover.status !== 'COMPLETED' && (
+                    <button
+                      id={`btn-inspect-handover-${handover.public_id}`}
+                      type="button"
+                      onClick={() => setHandoverModalFoundId(item.public_id)}
+                      className="w-full py-2 px-4 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Inspect &amp; Process Handover
+                    </button>
+                  )}
+
                   {handover.status === 'COMPLETED' ? (
                     <div className="text-xs font-semibold text-emerald-700 flex items-center justify-center py-2 bg-emerald-50 border border-emerald-200 rounded-md">
                       <CheckCircle className="w-4 h-4 mr-1.5 text-emerald-600" />
-                      Physical Collection Completed & Resolved
+                      Physical Collection Completed &amp; Resolved
                     </div>
                   ) : handover.status === 'FAILED' ? (
                     <div className="text-xs font-semibold text-red-700 flex items-center justify-center py-2 bg-red-50 border border-red-200 rounded-md">
@@ -253,6 +352,24 @@ export const AdminHandoverPage: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* QR Scanner Modal */}
+      <QrScannerModal
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanSuccess={handleQrScan}
+      />
+
+      {/* Custodian Case Inspection & Handover Modal */}
+      <CustodianHandoverModal
+        foundId={handoverModalFoundId}
+        isOpen={!!handoverModalFoundId}
+        onClose={() => setHandoverModalFoundId(null)}
+        onHandoverSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['admin-handovers'] });
+          queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+        }}
+      />
     </div>
   );
 };
