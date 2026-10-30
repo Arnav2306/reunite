@@ -111,10 +111,13 @@ class FoundItemAdminSerializer(serializers.ModelSerializer):
 class AvailableItemPublicSerializer(serializers.ModelSerializer):
     """
     STRICT Public Serializer for Students and Public Catalog.
-    Strictly excludes serial_number, imei, identifying_marks, internal_notes, and secret_verification_info.
+    Under Phase 7: Students can browse available items, but must NOT see photos,
+    identifying descriptions, brand, colour, or exact found locations to prevent false claims.
+    Authorized staff (custodian/admin) preserve full access to all details.
     """
     images = serializers.SerializerMethodField()
     collection_location = CollectionPointSimpleSerializer(source='collection_point', read_only=True)
+    availability_status = serializers.SerializerMethodField()
 
     class Meta:
         model = FoundItem
@@ -128,6 +131,7 @@ class AvailableItemPublicSerializer(serializers.ModelSerializer):
             'found_location',
             'collection_location',
             'status',
+            'availability_status',
             'risk_tier',
             'cannot_carry',
             'cannot_carry_details',
@@ -138,10 +142,44 @@ class AvailableItemPublicSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def is_staff_user(self):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        user = request.user
+        return bool(
+            user.is_staff or
+            getattr(user, 'role', '') in ['custodian', 'admin', 'superadmin'] or
+            getattr(user, 'is_superuser', False)
+        )
+
     def get_images(self, obj):
+        # Security Policy (Phase 7): Never expose photos, thumbnails or image URLs to students
+        if not self.is_staff_user():
+            return []
         content_type = ContentType.objects.get_for_model(FoundItem)
         images = ItemImage.objects.filter(content_type=content_type, object_id=obj.id)
         return ItemImageSerializer(images, many=True, context=self.context).data
+
+    def get_availability_status(self, obj):
+        if obj.status in ['RESOLVED', 'COLLECTED']:
+            return 'Claimed / Collected'
+        if obj.status == 'READY_FOR_PICKUP':
+            return 'Ready for collection'
+        return 'Available for verification'
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if not self.is_staff_user():
+            # Security Policy (Phase 7): Strip identifying photos, detailed descriptions,
+            # specific titles, and exact locations from browser payloads for non-staff.
+            data['images'] = []
+            data['description'] = None
+            data['title'] = obj.category
+            data['found_location'] = None
+            data['cannot_carry_details'] = None
+            data['status'] = 'Available for verification' if obj.status in ['REPORTED', 'DEPOSIT_PENDING', 'DEPOSITED'] else obj.status
+        return data
 
 
 class LostItemSerializer(serializers.ModelSerializer):

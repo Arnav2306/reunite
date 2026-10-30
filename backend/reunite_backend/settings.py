@@ -17,6 +17,12 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+import sys
+
+_is_collectstatic = 'collectstatic' in sys.argv
+
+_is_test = 'test' in sys.argv
+
 # ─────────────────────────────────────────────
 # Security — load from environment in production
 # ─────────────────────────────────────────────
@@ -31,10 +37,29 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
+if not DEBUG and not _is_collectstatic and not _is_test:
+    if SECRET_KEY.startswith('django-insecure-'):
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            'DJANGO_SECRET_KEY environment variable must be set in production when DJANGO_DEBUG=False.'
+        )
+
 ALLOWED_HOSTS_ENV = os.environ.get('DJANGO_ALLOWED_HOSTS', '')
-ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS_ENV.split(',') if h.strip()] or (
-    ['*'] if DEBUG else []
-)
+ALLOWED_HOSTS = [h.strip() for h in ALLOWED_HOSTS_ENV.split(',') if h.strip()]
+_railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+if _railway_domain and _railway_domain not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_railway_domain)
+if not ALLOWED_HOSTS:
+    if DEBUG:
+        ALLOWED_HOSTS = ['*']
+    else:
+        ALLOWED_HOSTS = [
+            'reunite-production.up.railway.app',
+            '.up.railway.app',
+            '.railway.app',
+            'localhost',
+            '127.0.0.1',
+        ]
 
 # ─────────────────────────────────────────────
 # AI Integration (optional — system degrades gracefully when not set)
@@ -88,6 +113,14 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [] if _is_test else [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/min',
+        'user': '1200/min',
+    },
 }
 
 MIDDLEWARE = [
@@ -112,14 +145,45 @@ _cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
 if _cors_origins_env:
     CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_env.split(',') if o.strip()]
 else:
-    # In DEBUG mode, allow all origins for local development convenience
     CORS_ALLOW_ALL_ORIGINS = DEBUG
+    if not DEBUG:
+        CORS_ALLOWED_ORIGIN_REGEXES = [
+            r"^https://.*\.vercel\.app$",
+            r"^https://reunite-production\.up\.railway\.app$",
+        ]
 
 _csrf_origins_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
 if _csrf_origins_env:
     CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_origins_env.split(',') if o.strip()]
-elif CORS_ALLOWED_ORIGINS if '_cors_origins_env' in locals() and _cors_origins_env else False:
+elif '_cors_origins_env' in locals() and _cors_origins_env:
     CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        'https://reunite-production.up.railway.app',
+        'https://*.up.railway.app',
+        'https://*.vercel.app',
+    ]
+
+# ─────────────────────────────────────────────
+# Production Security Headers & Cookies
+# ─────────────────────────────────────────────
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', 31536000))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False').lower() in ('true', '1', 'yes')
+else:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    X_FRAME_OPTIONS = 'DENY'
+
+SESSION_COOKIE_HTTPONLY = True
 
 
 ROOT_URLCONF = 'reunite_backend.urls'

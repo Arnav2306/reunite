@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, getMediaUrl } from '../services/api';
+import { api, ApiError } from '../services/api';
 import type { MatchItem, LostItem } from '../types/recovery';
 import {
   Sparkles, CheckCircle2, AlertCircle, ShieldAlert,
-  Eye, MapPin, Building, X, Loader2,
+  Eye, Building, X, Loader2, Lock, Calendar,
   FileQuestion, ChevronRight
 } from 'lucide-react';
 
@@ -231,9 +231,7 @@ export const MatchesPage: React.FC = () => {
                       ? 'bg-blue-100 text-blue-900 border-blue-300'
                       : 'bg-slate-100 text-slate-700 border-slate-200';
 
-                    const primaryImage = found.images && found.images.length > 0
-                      ? getMediaUrl(found.images[0].image_url || found.images[0].image)
-                      : null;
+
 
                     return (
                       <div
@@ -252,30 +250,29 @@ export const MatchesPage: React.FC = () => {
                             </span>
                           </div>
 
-                          {/* Image preview if available */}
-                          {primaryImage && (
-                            <img
-                              src={primaryImage}
-                              alt={found.title || found.category}
-                              className="w-full h-40 object-cover rounded-lg border border-slate-200"
-                            />
-                          )}
+                          {/* Category & Availability (Photos & detailed descriptions hidden for fraud prevention) */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Found Category</span>
+                              <h3 className="font-bold text-slate-900 text-base leading-snug">
+                                {found.category}
+                              </h3>
+                            </div>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                              Available for verification
+                            </span>
+                          </div>
 
-                          {/* Found item details */}
-                          <div>
-                            <h3 className="font-bold text-slate-900 text-base leading-snug">
-                              {found.title || found.category}
-                            </h3>
-                            <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                              {found.description}
-                            </p>
+                          <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-lg text-[11px] text-slate-500 flex items-start gap-1.5">
+                            <Lock className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
+                            <span>Photographs and specific descriptions are protected to prevent false claims. Verify ownership below.</span>
                           </div>
 
                           {/* Location & Holding Station */}
-                          <div className="text-xs space-y-1 pt-2 border-t border-slate-200 text-slate-500">
+                          <div className="text-xs space-y-1.5 pt-2 border-t border-slate-200 text-slate-500">
                             <div className="flex items-center gap-1.5">
-                              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>Found at: <strong className="text-slate-700">{found.found_location || 'Campus premises'}</strong></span>
+                              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span>Found: <strong className="text-slate-700">{found.found_date ? new Date(found.found_date).toLocaleDateString() : 'Recent'}</strong></span>
                             </div>
                             {found.collection_location && (
                               <div className="flex items-center gap-1.5">
@@ -358,7 +355,7 @@ export const MatchesPage: React.FC = () => {
                 Match Inspection
               </span>
               <h2 className="text-lg font-bold text-slate-900 mt-2">
-                {inspectingMatch.found_item.title || inspectingMatch.found_item.category}
+                {inspectingMatch.found_item.category}
               </h2>
               <div className="flex items-center gap-2 mt-1">
                 <span className="font-bold text-purple-900 text-sm">
@@ -367,13 +364,18 @@ export const MatchesPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Found Item Public Details */}
+            {/* Found Item Public Details (Protected) */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2">
-              <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Safe Public Description</h4>
-              <p className="text-slate-600 leading-relaxed">{inspectingMatch.found_item.description}</p>
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                <Lock className="w-3.5 h-3.5 text-blue-600" />
+                <span>Details Protected for Ownership Verification</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                To prevent false claims, visual and identifying details are withheld. Review the holding station below and submit your claim with specific ownership verification details.
+              </p>
               <div className="pt-2 border-t border-slate-200 space-y-1 text-slate-500">
-                <div><span className="font-medium text-slate-700">Found Location:</span> {inspectingMatch.found_item.found_location || 'Campus'}</div>
-                <div><span className="font-medium text-slate-700">Found Date:</span> {inspectingMatch.found_item.found_date || 'Recent'}</div>
+                <div><span className="font-medium text-slate-700">Category:</span> {inspectingMatch.found_item.category}</div>
+                <div><span className="font-medium text-slate-700">Found Date:</span> {inspectingMatch.found_item.found_date ? new Date(inspectingMatch.found_item.found_date).toLocaleDateString() : 'Recent'}</div>
                 {inspectingMatch.found_item.collection_location && (
                   <div>
                     <span className="font-medium text-slate-700">Holding Desk:</span> {inspectingMatch.found_item.collection_location.station_code} ({inspectingMatch.found_item.collection_location.building})

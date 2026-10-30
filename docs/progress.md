@@ -192,6 +192,87 @@ Comprehensive targeted regression & end-to-end test execution covering 79 target
    - Prior custody, claim, and handover history remain intact (`history_preserved=True`).
    - Custodians and students are strictly blocked with 403 Forbidden on report deletion.
 
+---
+
+## Phase 7: Hide Found Item Details from Students (Security & Anti-Fraud)
+
+### 1. Objective & Threat Model
+To prevent false ownership claims, social engineering, and fraud, students browsing available found items or reviewing potential matches must NOT see photos, thumbnails, or identifying descriptions. Authorized staff (custodians, admins) preserve complete access to all item details, photos, descriptions, and custody information on the backend.
+
+### 2. Backend Role-Based Protection & Response Filtering
+- **Role-Aware Serializer (`AvailableItemPublicSerializer`)**:
+  - Automatically identifies caller via `is_staff_user(request)`.
+  - For non-staff / students / anonymous callers:
+    - `images = []`: All image URLs, previews, and Cloudinary media are redacted.
+    - `description = None`: Detailed item description is hidden.
+    - `title = obj.category`: Specific titles are replaced with broad category (e.g., `"Electronics"`).
+    - `found_location = None`: Exact found location is hidden.
+    - `cannot_carry_details = None`: Internal handling details hidden.
+    - `availability_status = "Available for verification"`: Standardized status.
+    - Permitted safe fields: `public_id` (`RNT-F-...`), `category`, `found_date`, `collection_location` (general building/desk).
+  - For staff / custodians / admins: Unredacted images, raw titles, descriptions, and internal notes are fully preserved.
+- **Search-Oracle Probing Prevention (`AvailableItemsPublicViewSet`)**:
+  - `get_queryset()` was restricted for non-staff callers to only filter on safe fields (`category`, `public_id`, `collection_point__building`).
+  - Queries against `description`, `title`, and `found_location` are blocked for students, preventing information leakage via search parameter probing.
+- **Match Notifications Security (`matching.py`)**:
+  - In-app and email match notifications for students use broad category labels instead of found item titles, preventing notifications from leaking secret item details.
+- **Staff Admin Endpoints**:
+  - `FoundItemAdminViewSet`, `ClaimAdminSerializer`, and `HandoverStaffDetailSerializer` retain full unredacted access, custody audit events, and image attachments.
+
+### 3. Frontend Student Portal Enhancements
+- **Available Items Page (`AvailableItemsPage.tsx`)**:
+  - Removed image previews, raw titles, and item descriptions from student cards.
+  - Replaced with clean security-focused cards displaying Category, Found ID badge, holding station/building, and found date.
+  - Added "Details Protected for Ownership Verification" security notice.
+  - Updated search input placeholder to search only by Category, Report ID, or Building.
+  - Claim modal stripped of visual previews to maintain verification integrity.
+- **Matches Page (`MatchesPage.tsx`)**:
+  - Removed thumbnail image previews (`primaryImage`), descriptions, and exact found location from match cards.
+  - Modal details genericized for student claimants to require independent verification at the recovery desk.
+
+### 4. Verification & Automated Test Coverage
+- Created `backend/items/tests_hide_found_details.py` with 7 targeted security test cases:
+  - `test_student_available_items_api_hides_images_and_description`: Confirms `images == []`, `description is None`, and title equals category.
+  - `test_student_available_items_api_exposes_safe_fields`: Confirms `public_id`, `category`, `found_date`, and building are preserved.
+  - `test_staff_available_items_api_preserves_full_details`: Confirms staff receive full photos, description, and raw title.
+  - `test_search_filter_does_not_leak_via_description_probing`: Confirms students cannot probe secret descriptions using search query parameters.
+  - `test_matches_api_hides_found_item_details_for_student`: Confirms nested found item in matches hides photos and descriptions.
+  - `test_match_notification_does_not_leak_found_title`: Confirms notification messages use broad category rather than secret title.
+  - `test_staff_found_item_admin_api_retains_full_details`: Confirms staff admin endpoints retain full details and images.
+
+---
+
+## Phase 8: Production Security & Deployment Audit
+
+### 1. Security Audit Findings & Fixes
+- **Student Found Item Hard-Delete Vulnerability (HIGH)**:
+  - *Finding*: StudentFoundItemViewSet inherited ModelViewSet without overriding destroy(). Authenticated students could issue DELETE /api/items/student-found/<id>/ and hard-delete their report, bypassing admin controls, custody history, and audit trails.
+  - *Fix*: Implemented destroy() in StudentFoundItemViewSet returning HTTP 403 Forbidden. Added automated security test test_student_found_item_cannot_be_deleted_by_student.
+- **Ownership Verification Answer Exposure in Third-Party Contexts (MEDIUM)**:
+  - *Finding*: OwnershipVerificationSerializer exposed plaintext student_answer without verifying whether the requesting user was the claim owner or staff member (e.g. when nested inside dispute payloads).
+  - *Fix*: Added role/ownership guard in OwnershipVerificationSerializer.to_representation(). When evaluated by non-staff users other than the student claimant, student_answer is masked as [Protected Verification Detail]. Added test test_ownership_verification_answer_redacted_for_third_party.
+- **Missing Django Schema Migration (MEDIUM)**:
+  - *Finding*: Model changes (editable=False on public_id for FoundItem and LostItem) caused python manage.py makemigrations --check to exit with failure code 1.
+  - *Fix*: Generated migration 0007_alter_founditem_public_id_alter_lostitem_public_id.py and applied it. makemigrations --check --dry-run now reports 0 missing changes.
+- **Production Cookie & Security Headers (HIGH)**:
+  - *Finding*: When DEBUG = False, SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE, SECURE_BROWSER_XSS_FILTER, SECURE_CONTENT_TYPE_NOSNIFF, SECURE_HSTS_SECONDS, and SECURE_PROXY_SSL_HEADER were unconfigured, triggering warnings in Django's deployment check.
+  - *Fix*: Configured secure cookies, HSTS headers, and proxy SSL header for reverse-proxy / Railway environments.
+- **Insecure Default Secret Key Guard (HIGH)**:
+  - *Finding*: settings.py allowed running with a hardcoded insecure secret key if DJANGO_SECRET_KEY was omitted in production.
+  - *Fix*: Added strict ImproperlyConfigured guard preventing server boot when DJANGO_DEBUG=False without an explicit production secret key.
+- **REST Framework Throttling (MEDIUM)**:
+  - *Finding*: DRF global rate throttling was unconfigured.
+  - *Fix*: Added AnonRateThrottle (120/min) and UserRateThrottle (1200/min) to REST_FRAMEWORK default throttle classes, preventing automated credential brute forcing and endpoint scraping.
+- **Health Endpoint Database Status (LOW)**:
+  - *Finding*: /api/health/ returned HTTP 200 without actively testing the database connection. Root /health/ and /healthz/ did not exist.
+  - *Fix*: Exposed /health/ and /healthz/ at the root and added active connection.ensure_connection() check returning HTTP 503 if the database is unreachable.
+
+### 2. Verification Results
+- **Django Security & Deployment Check**: PASS (0 issues with python manage.py check).
+- **Database Schema & Migrations**: PASS (makemigrations --check --dry-run reports 0 unapplied changes).
+- **Targeted Security Test Suite**: PASS (items.tests_hide_found_details - 9/9 passed in 21.276s).
+- **Frontend Production Build**: PASS (tsc && vite build - 0 errors, built in 1.03s).
+
 ## 3. MANUAL ACCEPTANCE TESTING CHECKLIST
 
 ### Authentication & Student Journey (`http://localhost:5173/`)
@@ -223,3 +304,61 @@ Comprehensive targeted regression & end-to-end test execution covering 79 target
   - CORS (`CORS_ALLOWED_ORIGINS`) and CSRF (`CSRF_TRUSTED_ORIGINS`)
   - Persistent media (`MEDIA_ROOT`)
 * Full documentation provided in `COLLEGE_DEPLOYMENT_GUIDE.md` and `docs/AI_IMAGE_DESCRIPTION_SETUP.md`.
+
+
+---
+
+## Phase 9: Live Deployment Configuration
+
+### Architecture
+- **Frontend**: Vercel static hosting (`*.vercel.app`)
+- **Backend API**: Railway (`https://reunite-production.up.railway.app`)
+- **API Routing**: Vercel `vercel.json` rewrites `/api/*` to `https://reunite-production.up.railway.app/api/*`
+- **Database**: Railway PostgreSQL (auto-injected `DATABASE_URL`)
+- **Media Storage**: Cloudinary
+
+### API Client Design (No Duplicate /api Prefixes)
+- `frontend/src/services/api.ts`: If `VITE_API_URL` ends in `/api`, strips trailing `/api` to prevent duplicate path segments.
+- On Vercel with empty `VITE_API_URL`: relative `/api/...` calls are rewritten by `vercel.json` to the Railway backend.
+- Correct Vercel frontend env: `VITE_API_URL=` (empty) — requests use the Vercel rewrite proxy.
+- `vercel.json` correctly maps: `"/api/:path*"` to `"https://reunite-production.up.railway.app/api/:path*"`.
+
+### Fixes Made (Pending Deployment)
+| File | Fix |
+|------|-----|
+| `backend/items/views.py` | `AvailableItemsPublicViewSet.permission_classes` changed from `[IsAuthenticated]` to `[AllowAny]`. Browsing the Found Items catalog now works for unauthenticated and student users without a 401. Role-based field hiding in serializer still applies. |
+| `backend/reunite_backend/settings.py` | Added Railway-domain fallback to `ALLOWED_HOSTS` without requiring explicit `DJANGO_ALLOWED_HOSTS` env var: hard-coded safe defaults for `*.up.railway.app`. |
+| `backend/reunite_backend/settings.py` | Added `CORS_ALLOWED_ORIGIN_REGEXES` for `*.vercel.app` when `CORS_ALLOWED_ORIGINS` env var is empty; default `CSRF_TRUSTED_ORIGINS` includes Railway and Vercel domains. |
+| `backend/reunite_backend/urls.py` | Added root `/health/` and `/healthz/` routes for Railway health probes. |
+
+### Live Endpoint Verification (Actual Results)
+| Endpoint | Status | Notes |
+|----------|--------|-------|
+| `GET /api/health/` | PASS HTTP 200 | `{"status": "ok", "database": "postgresql"}` PostgreSQL live |
+| `GET /api/items/public-stats/` | PASS HTTP 200 | Returns real counts from PostgreSQL |
+| `GET /api/items/available-items/` | FAIL HTTP 401 | Production still has IsAuthenticated, fixed locally, needs deploy |
+| `GET /health/` | FAIL HTTP 404 | Root health paths fixed locally, needs deploy |
+
+### Required Railway Environment Variables (By Name Only)
+- `DJANGO_DEBUG` = False (required)
+- `DJANGO_SECRET_KEY` = 50+ char random key (required)
+- `DATABASE_URL` = Auto-injected by Railway PostgreSQL plugin
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (required)
+- `CORS_ALLOWED_ORIGINS` = Vercel app URL (recommended)
+- `CSRF_TRUSTED_ORIGINS` = Railway + Vercel URLs (recommended)
+- `DJANGO_ALLOWED_HOSTS` = Optional; falls back to `.up.railway.app`
+- `GEMINI_API_KEY` = Optional for AI image analysis
+
+### Required Vercel Environment Variables
+- `VITE_API_URL` = (leave empty) — requests are proxied via `vercel.json` rewrites
+
+### Remaining Blockers
+1. Deploy local Phase 7-9 changes to Railway so `/api/items/available-items/` returns HTTP 200 for students.
+2. Set `CORS_ALLOWED_ORIGINS` on Railway to exact Vercel deployment URL.
+3. Set `CSRF_TRUSTED_ORIGINS` on Railway to include both Railway backend and Vercel frontend URLs.
+
+### Single Recommended Next Step
+Commit and push all Phase 7-9 changes and trigger a Railway redeploy, then verify:
+1. `GET https://reunite-production.up.railway.app/api/items/available-items/` returns HTTP 200.
+2. `GET https://reunite-production.up.railway.app/health/` returns HTTP 200.
+3. Login from Vercel frontend reaches Railway backend without CORS errors.

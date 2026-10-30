@@ -385,7 +385,6 @@ def evaluate_found_item_matches(found_item: FoundItem, notify: bool = True) -> l
 
                         if not already_notified:
                             label = get_match_label(score)
-                            found_title = found_item.title or found_item.category
                             station_str = (
                                 f" at {found_item.collection_point.station_code}"
                                 if getattr(found_item, 'collection_point', None) else ""
@@ -395,7 +394,7 @@ def evaluate_found_item_matches(found_item: FoundItem, notify: bool = True) -> l
                                 user=lost_item.user,
                                 title=f'{label} — {lost_item.category}',
                                 message=(
-                                    f"A newly registered item \"{found_title}\" (Found ID: {found_item.public_id}) "
+                                    f"A newly registered {found_item.category} item (Found ID: {found_item.public_id}) "
                                     f"may match your lost {lost_item.category} report (score: {score}/100 — {label}){station_str}. "
                                     f"Visit your Matches page to review holding station and pickup instructions."
                                 ),

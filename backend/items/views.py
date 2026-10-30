@@ -472,18 +472,39 @@ class AvailableItemsPublicViewSet(viewsets.ReadOnlyModelViewSet):
     Only returns items where is_published=True.
     """
     serializer_class = AvailableItemPublicSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         qs = FoundItem.objects.filter(is_published=True).exclude(status=ItemStatus.ARCHIVED).select_related('collection_point').order_by('-published_at', '-created_at')
 
+        user = self.request.user
+        is_staff_user = bool(
+            user.is_authenticated and (
+                user.is_staff or
+                getattr(user, 'role', '') in ['custodian', 'admin', 'superadmin'] or
+                getattr(user, 'is_superuser', False)
+            )
+        )
+
         search = self.request.query_params.get('search')
         if search:
-            qs = qs.filter(
-                Q(title__icontains=search) |
-                Q(description__icontains=search) |
-                Q(found_location__icontains=search)
-            )
+            search_str = search.strip()
+            if is_staff_user:
+                qs = qs.filter(
+                    Q(title__icontains=search_str) |
+                    Q(description__icontains=search_str) |
+                    Q(found_location__icontains=search_str) |
+                    Q(category__icontains=search_str) |
+                    Q(public_id__icontains=search_str)
+                )
+            else:
+                # Security (Phase 7): Students can only search safe public fields (category, ID, building).
+                # Probing on description/title/exact location is blocked to prevent attribute guessing.
+                qs = qs.filter(
+                    Q(category__icontains=search_str) |
+                    Q(public_id__icontains=search_str) |
+                    Q(collection_point__building__icontains=search_str)
+                )
 
         category = self.request.query_params.get('category')
         if category and category != 'all':
@@ -732,6 +753,9 @@ class StudentFoundItemViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         return Response({'detail': 'Direct modifications to published found reports are restricted to custodial staff.'}, status=status.HTTP_403_FORBIDDEN)
+
+    def destroy(self, request, *args, **kwargs):
+        return Response({'detail': 'Found reports cannot be deleted directly. Use the cancel action or contact an administrator.'}, status=status.HTTP_403_FORBIDDEN)
 
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):

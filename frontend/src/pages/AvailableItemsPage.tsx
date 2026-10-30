@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, ApiError, getMediaUrl } from '../services/api';
+import { api, ApiError } from '../services/api';
 import type { AvailableItem } from '../types/recovery';
-import { Search, ShieldAlert, CheckCircle2, PackageCheck, AlertCircle, Loader2, X } from 'lucide-react';
+import { Search, ShieldAlert, CheckCircle2, PackageCheck, AlertCircle, Loader2, X, Tag, Lock, Calendar, Building } from 'lucide-react';
 
 export const AvailableItemsPage: React.FC = () => {
   const [search, setSearch] = useState('');
@@ -99,7 +99,7 @@ export const AvailableItemsPage: React.FC = () => {
           <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
           <input
             type="text"
-            placeholder="Search items by title, description, or found location..."
+            placeholder="Search by category, Found ID, or station building..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-slate-900"
@@ -194,34 +194,27 @@ export const AvailableItemsPage: React.FC = () => {
               key={item.public_id}
               className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
             >
-              <div>
-                {item.images && item.images.length > 0 ? (
-                  <div className="w-full h-48 bg-slate-100 border-b border-slate-100 overflow-hidden relative">
-                    <img
-                      src={getMediaUrl(item.images[0].image_url || item.images[0].image)}
-                      alt={`Photograph of found ${item.title || item.category}`}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      onError={(e) => {
-                        // Fallback if image fails to load
-                        (e.currentTarget as HTMLElement).style.display = 'none';
-                        const parent = (e.currentTarget as HTMLElement).parentElement;
-                        if (parent) {
-                          parent.innerHTML = '<div class="w-full h-48 bg-slate-100 flex flex-col items-center justify-center text-slate-400 text-xs font-medium">Image unavailable</div>';
-                        }
-                      }}
-                    />
+              <div className="p-5 space-y-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700">
+                      <Tag className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Found Category</span>
+                      <h3 className="font-bold text-slate-900 text-base leading-snug">{item.category}</h3>
+                    </div>
                   </div>
-                ) : (
-                  <div className="w-full h-32 bg-gradient-to-br from-slate-50 to-slate-100 border-b border-slate-100 flex flex-col items-center justify-center text-slate-400">
-                    <PackageCheck className="w-8 h-8 stroke-[1.5] text-slate-300 mb-1" />
-                    <span className="text-[11px] font-medium text-slate-400">No photograph provided</span>
-                  </div>
-                )}
+                  <span className="font-mono text-xs font-bold text-purple-900 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200 shrink-0">
+                    {item.public_id}
+                  </span>
+                </div>
 
-                <div className="p-5 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-slate-900 text-lg leading-snug">{item.title || item.category}</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
+                    Available for verification
+                  </span>
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
                       item.risk_tier === 1
@@ -229,34 +222,44 @@ export const AvailableItemsPage: React.FC = () => {
                         : 'bg-slate-100 text-slate-700 border border-slate-200'
                     }`}
                   >
-                    {item.risk_tier === 1 ? 'Valuable Item' : 'General Item'}
+                    {item.risk_tier === 1 ? 'Valuable (OTP on Pickup)' : 'General Item'}
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-600 line-clamp-3">{item.description}</p>
+                {/* Security Protection Notice: Photos & specific descriptions withheld */}
+                <div className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl space-y-1 text-xs text-slate-600">
+                  <div className="flex items-center gap-1.5 text-slate-700 font-semibold text-[11px]">
+                    <Lock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Details Protected</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Photos and identifying descriptions are withheld to prevent false claims. Verify ownership below to claim.
+                  </p>
+                </div>
 
-                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 space-y-1">
-                  <div>
-                    <span className="font-medium text-slate-700">Found Location:</span>{' '}
-                    {item.found_location || 'Campus Premises'}
+                <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>Found: <strong className="text-slate-700">{item.found_date ? new Date(item.found_date).toLocaleDateString() : 'Recent'}</strong></span>
                   </div>
                   {item.collection_location && (
-                    <div>
-                      <span className="font-medium text-slate-700">Holding Desk:</span>{' '}
-                      {item.collection_location.station_code} ({item.collection_location.building})
+                    <div className="flex items-center gap-1.5">
+                      <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>
+                        Holding Desk: <strong className="text-slate-700">{item.collection_location.station_code}</strong> ({item.collection_location.building})
+                      </span>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100">
+              <div className="p-4 bg-slate-50 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => handleOpenClaim(item)}
-                  className="w-full py-2 px-4 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs rounded-md shadow-xs transition-colors flex items-center justify-center"
+                  className="w-full py-2 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5"
                 >
-                  This might be mine
+                  This Might Be Mine (Verify Ownership)
                 </button>
               </div>
             </div>
@@ -275,10 +278,16 @@ export const AvailableItemsPage: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
 
-            <h2 className="text-lg font-bold text-slate-900">Claim Ownership</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Item: <span className="font-semibold text-slate-800">{selectedItem.title}</span> ({selectedItem.category})
-            </p>
+            <h2 className="text-lg font-bold text-slate-900">Verify Ownership & Claim</h2>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl mt-2 space-y-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-blue-900">Category: {selectedItem.category}</span>
+                <span className="font-mono font-bold text-blue-950 bg-white px-2 py-0.5 rounded border border-blue-300">{selectedItem.public_id}</span>
+              </div>
+              <p className="text-[11px] text-blue-800">
+                To prevent false claims, visual details are hidden. Describe your item specifically (e.g. brand, model, exact color, stickers, contents, or serial numbers) so campus staff can verify your claim.
+              </p>
+            </div>
 
             {submitSuccess ? (
               <div className="py-8 text-center space-y-2">

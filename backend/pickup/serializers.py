@@ -11,6 +11,26 @@ class OwnershipVerificationSerializer(serializers.ModelSerializer):
         fields = ['public_id', 'question', 'student_answer', 'verification_result', 'submission_timestamp', 'version']
         read_only_fields = ['public_id', 'submission_timestamp']
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            user = request.user
+            is_staff = bool(
+                user and user.is_authenticated and (
+                    user.is_staff or
+                    getattr(user, 'is_superuser', False) or
+                    getattr(user, 'role', '') in ['custodian', 'admin', 'superadmin']
+                )
+            )
+            is_owner = bool(
+                user and user.is_authenticated and
+                hasattr(instance, 'claim') and instance.claim and instance.claim.student == user
+            )
+            if not is_staff and not is_owner:
+                ret['student_answer'] = '[Protected Verification Detail]'
+        return ret
+
 class ClaimStudentSerializer(serializers.ModelSerializer):
     found_item = AvailableItemPublicSerializer(read_only=True)
     verification = OwnershipVerificationSerializer(read_only=True)
