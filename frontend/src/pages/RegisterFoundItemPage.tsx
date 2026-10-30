@@ -6,6 +6,7 @@ import {
   Upload, X, Sparkles, Loader2, CheckCircle2, AlertCircle,
   ImageIcon, Lock, Eye, ChevronDown, Save, Globe
 } from 'lucide-react';
+import { FoundItemSticker } from '../components/FoundItemSticker';
 
 interface CollectionPoint {
   id: number;
@@ -237,9 +238,11 @@ export const RegisterFoundItemPage: React.FC = () => {
               </span>
               <h3 className="font-bold text-slate-900 text-sm mt-1 truncate">{title || category}</h3>
               <p className="text-xs text-slate-500 truncate">{category} · {foundLocation || 'Campus premises'}</p>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">ID: {successId.substring(0, 8)}</p>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">ID: {successId}</p>
             </div>
           </div>
+
+          <FoundItemSticker foundId={successId} category={category} />
 
           <div className="flex items-center justify-center gap-3 pt-4">
             <button

@@ -289,6 +289,10 @@ def evaluate_lost_item_matches(lost_item: LostItem, notify: bool = True) -> list
                 label = get_match_label(best_score)
                 count = len(high_matches)
                 plural = 'match' if count == 1 else 'matches'
+                station_str = (
+                    f" at {best_match.found_item.collection_point.station_code}"
+                    if getattr(best_match.found_item, 'collection_point', None) else ""
+                )
                 Notification.objects.create(
                     public_id=str(uuid.uuid4()),
                     user=lost_item.user,
@@ -296,7 +300,8 @@ def evaluate_lost_item_matches(lost_item: LostItem, notify: bool = True) -> list
                     message=(
                         f"We found {count} possible {plural} for your lost {lost_item.category} report "
                         f"(best score: {best_score}/100 — {label}). "
-                        f"Visit your Matches page to review and claim your item."
+                        f"Found ID: {best_match.found_item.public_id}{station_str}. "
+                        f"Visit your Matches page to review holding desk and pickup instructions."
                     ),
                     notification_type='MATCH_FOUND',
                     action_url='/matches',
@@ -381,14 +386,18 @@ def evaluate_found_item_matches(found_item: FoundItem, notify: bool = True) -> l
                         if not already_notified:
                             label = get_match_label(score)
                             found_title = found_item.title or found_item.category
+                            station_str = (
+                                f" at {found_item.collection_point.station_code}"
+                                if getattr(found_item, 'collection_point', None) else ""
+                            )
                             Notification.objects.create(
                                 public_id=str(uuid.uuid4()),
                                 user=lost_item.user,
                                 title=f'{label} — {lost_item.category}',
                                 message=(
-                                    f"A newly registered item \"{found_title}\" may match your lost "
-                                    f"{lost_item.category} report (score: {score}/100 — {label}). "
-                                    f"Visit your Matches page to review and claim it."
+                                    f"A newly registered item \"{found_title}\" (Found ID: {found_item.public_id}) "
+                                    f"may match your lost {lost_item.category} report (score: {score}/100 — {label}){station_str}. "
+                                    f"Visit your Matches page to review holding station and pickup instructions."
                                 ),
                                 notification_type='MATCH_FOUND',
                                 action_url='/matches',

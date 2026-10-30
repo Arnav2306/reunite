@@ -1,3 +1,4 @@
+import { FoundItemSticker } from './FoundItemSticker';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getMediaUrl } from '../services/api';
@@ -183,6 +184,24 @@ export const CustodianHandoverModal: React.FC<CustodianHandoverModalProps> = ({
     },
     onError: (err: ApiError) => {
       setActionError(err.message || 'Failed to confirm physical collection.');
+    },
+  });
+
+  // Confirm Deposit mutation (for DEPOSIT_PENDING items)
+  const confirmDepositMutation = useMutation({
+    mutationFn: async (publicId: string) => {
+      return api.post(`/api/items/found-items/${publicId}/confirm-deposit/`);
+    },
+    onSuccess: () => {
+      setActionError(null);
+      setSuccessMessage('Physical receipt confirmed! Item is now in institutional custody.');
+      queryClient.invalidateQueries({ queryKey: ['custodian-case-details', foundId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-recovery-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+      refetchCase();
+    },
+    onError: (err: ApiError) => {
+      setActionError(err.message || 'Failed to confirm physical deposit.');
     },
   });
 
@@ -413,6 +432,37 @@ export const CustodianHandoverModal: React.FC<CustodianHandoverModalProps> = ({
                 </div>
               )}
 
+              {/* Deposit Pending Section */}
+              {item?.status === 'DEPOSIT_PENDING' && (
+                <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="font-bold text-amber-900 dark:text-amber-200 text-xs uppercase tracking-wide">
+                        Physical Custody Receipt Pending
+                      </h4>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-0.5">
+                        This item was reported by student but not yet deposited at station. Attach printed sticker and confirm deposit.
+                      </p>
+                    </div>
+                    <button
+                      id="btn-confirm-custody-deposit"
+                      type="button"
+                      onClick={() => { if (item) confirmDepositMutation.mutate(item.public_id); }}
+                      disabled={confirmDepositMutation.isPending}
+                      className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 shrink-0"
+                    >
+                      {confirmDepositMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Package className="w-3.5 h-3.5" />
+                      )}
+                      Confirm Physical Deposit
+                    </button>
+                  </div>
+                  <FoundItemSticker foundId={item.public_id} category={item.category} />
+                </div>
+              )}
+
               {/* 3. Handover Execution Controls & Verification Safeguards */}
               <div className="pt-2">
                 {isCompleted ? (
@@ -541,7 +591,7 @@ export const CustodianHandoverModal: React.FC<CustodianHandoverModalProps> = ({
                       ) : (
                         <CheckCircle className="w-4 h-4" />
                       )}
-                      Confirm Physical Handover to {approvedClaim.student_name}
+                      Complete Handover to {approvedClaim.student_name}
                     </button>
                   </div>
                 )}

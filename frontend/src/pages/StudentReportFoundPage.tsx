@@ -1,3 +1,4 @@
+import { FoundItemSticker } from '../components/FoundItemSticker';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -463,6 +464,9 @@ export const StudentReportFoundPage: React.FC = () => {
               <p className="text-xs text-teal-800 font-mono font-bold mt-1 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 inline-block">Report ID: {successId}</p>
             </div>
           </div>
+
+          {/* Printable Physical Custody Sticker */}
+          <FoundItemSticker foundId={successId} category={category} />
 
           {selectedStation && (
             <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl text-left">

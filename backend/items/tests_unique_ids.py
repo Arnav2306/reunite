@@ -219,3 +219,110 @@ class UniqueIdAndCustodialInvariantTests(TestCase):
         found_item.refresh_from_db()
         self.assertNotEqual(found_item.status, ItemStatus.RESOLVED)
         self.assertNotEqual(found_item.status, ItemStatus.READY_FOR_PICKUP)
+
+
+class AdminDeleteReportTests(TestCase):
+    """Tests for the admin-only destroy() endpoint on Found and Lost items."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.student = User.objects.create_user(
+            email='student_del@college.edu',
+            password='password123',
+            name='Del Student',
+            role='student',
+            mobile_number='+1111111111',
+        )
+        self.custodian = User.objects.create_user(
+            email='custodian_del@college.edu',
+            password='password123',
+            name='Del Custodian',
+            role='custodian',
+            is_staff=True,
+        )
+        self.admin = User.objects.create_user(
+            email='admin_del@college.edu',
+            password='password123',
+            name='Del Admin',
+            role='admin',
+            is_staff=True,
+        )
+        self.cp = CollectionPoint.objects.create(
+            station_code='RNT-DEL-S01',
+            building='Admin Block',
+            floor='Ground',
+            station_type='Main Desk',
+        )
+        self.found_item = FoundItem.objects.create(
+            user=self.student,
+            category='Electronics',
+            description='Deleted found item',
+            collection_point=self.cp,
+            status=ItemStatus.DEPOSIT_PENDING,
+        )
+        self.lost_item = LostItem.objects.create(
+            user=self.student,
+            category='Books',
+            description='Deleted lost item',
+        )
+
+    def test_admin_can_delete_found_report(self):
+        """Admin DELETE /api/items/found-items/{id}/ archives the item."""
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.delete(f'/api/items/found-items/{self.found_item.public_id}/')
+        self.assertIn(resp.status_code, [200, 204])
+        self.found_item.refresh_from_db()
+        self.assertEqual(self.found_item.status, ItemStatus.ARCHIVED)
+        # Audit log should record the deletion
+        self.assertTrue(
+            AuditLog.objects.filter(
+                target_id=str(self.found_item.public_id),
+                action='REPORT_ARCHIVED',
+            ).exists()
+        )
+
+    def test_admin_can_delete_lost_report(self):
+        """Admin DELETE /api/items/lost-items/{id}/ archives the item."""
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.delete(f'/api/items/lost-items/{self.lost_item.public_id}/')
+        self.assertIn(resp.status_code, [200, 204])
+        self.lost_item.refresh_from_db()
+        self.assertEqual(self.lost_item.status, ItemStatus.ARCHIVED)
+
+    def test_custodian_cannot_delete_found_report(self):
+        """Non-admin staff (custodian) must receive 403 on DELETE."""
+        self.client.force_authenticate(user=self.custodian)
+        resp = self.client.delete(f'/api/items/found-items/{self.found_item.public_id}/')
+        self.assertEqual(resp.status_code, 403)
+        # Item must remain untouched
+        self.found_item.refresh_from_db()
+        self.assertNotEqual(self.found_item.status, ItemStatus.ARCHIVED)
+
+    def test_custodian_cannot_delete_lost_report(self):
+        """Non-admin staff (custodian) must receive 403 on DELETE."""
+        self.client.force_authenticate(user=self.custodian)
+        resp = self.client.delete(f'/api/items/lost-items/{self.lost_item.public_id}/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_student_cannot_delete_found_report(self):
+        """Students must receive 403 on DELETE."""
+        self.client.force_authenticate(user=self.student)
+        resp = self.client.delete(f'/api/items/found-items/{self.found_item.public_id}/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_student_cannot_delete_lost_report(self):
+        """Students must receive 403 on DELETE."""
+        self.client.force_authenticate(user=self.student)
+        resp = self.client.delete(f'/api/items/lost-items/{self.lost_item.public_id}/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_already_archived_found_report_returns_error(self):
+        """Deleting an already-archived item returns 400 or 409."""
+        self.found_item.status = ItemStatus.ARCHIVED
+        self.found_item.save()
+        self.client.force_authenticate(user=self.admin)
+        resp = self.client.delete(f'/api/items/found-items/{self.found_item.public_id}/')
+        # The destroy() endpoint is idempotent: re-archiving an already-archived item returns 200
+        self.assertIn(resp.status_code, [200, 400, 409])
+

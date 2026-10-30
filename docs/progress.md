@@ -45,6 +45,77 @@ All requirements across the platform have been inspected, implemented, and verif
 * **Matching Integration**: Normalized attributes mapped directly to matching engine signals; category score matches 100% for same category and separates from generic keys.
 * **Privacy**: Private lost-report answers remain restricted to student owner and authorized custodians, never exposed to other claimants.
 
+### Recovery Workflow Verification (Phase 4)
+* **Unique Report IDs**: Student lost (`RNT-L-...`) and found (`RNT-F-...`) submissions generate and return permanent human-readable alphanumeric IDs with collision resistance.
+* **Custodian QR & Exact-ID Search**: Custodians and admins can look up items directly via exact report ID or parsed QR payload via `exact_id` and `search` query parameters.
+* **Claim Approval & Ownership Guard**: Non-staff users receive HTTP 403. Claims require an ownership verification answer; handovers strictly reject unapproved claims or claims with empty verification answers.
+* **Valuable Item OTP Verification**: High-risk items (risk tier 1) strictly require OTP verification before handover. OTPs use 15-minute expiry, PBKDF2 hash storage, 5-attempt brute-force lockout, single-use invalidation, and secure regeneration.
+* **Handover Completion & Audit Logging**: Confirming collection transitions handover, pickup request, and found item to `RESOLVED`, marks linked matches `CLAIMED`, dispatches student notification, and records structured audit events (`HANDOVER_COMPLETED`, `OTP_VERIFICATION_SUCCESS`).
+* **Duplicate Handover Prevention**: Already-completed handovers immediately reject duplicate confirmation attempts with HTTP 400.
+* **Match Notifications**: Notifications link to `/matches`, deduplicate on `related_object_id`, and remain isolated per user.
+
+
+---
+
+## Phase 5: Unique Report IDs, Fast Handover & Admin Controls
+
+### Unique Report IDs
+- **Lost items**: permanent `RNT-L-XXXXXX` ID generated on creation; displayed on submission confirmation, report detail, My Lost Items page, and Admin/Custodian Dashboard.
+- **Found items**: permanent `RNT-F-XXXXXX` ID generated on creation; displayed everywhere the item appears.
+- IDs use a 32-char unambiguous alphabet; collision-safe with retry; `editable=False` in Django model.
+- Immutability guard in `save()`: re-fetches original ID from DB before any update to prevent accidental changes.
+- ID alone **never** proves ownership; it is an identifier only.
+
+### Found Item Deposit & Printable Sticker
+- New `FoundItemSticker` React component: clean 4in × 2.5in printable label containing only Found ID + item category. No QR code, no private student information.
+- Sticker shown immediately after student submits a found report (`StudentReportFoundPage`).
+- Sticker shown on success screen of staff `RegisterFoundItemPage` with full (non-truncated) ID.
+- Custodian sees sticker in `CustodianHandoverModal` deposit-pending section before confirming physical receipt.
+- Dashboard `printLabelModal` replaced with `FoundItemSticker` component.
+
+### Fast Owner Collection
+- Match notifications (email/in-app) include the Found ID and station code.
+- `MatchesPage`: Found ID shown as `font-mono` badge in Location & Holding Station section; also shown in Inspect Match modal with pickup instructions.
+- `RecoveryPage`: Approved-claim section shows a prominent blue "Found Report ID to tell Custodian" box with `item.public_id` and "Give this ID at Desk" instruction.
+- Custodian searches Found ID at desk, checks approved claim, uses **Complete Handover** button.
+- Atomic handover: updates item, pickup, match and handover statuses; records custodian, timestamp, audit event; notifies owner.
+- Duplicate handovers blocked; unauthorized collection prevented.
+- OTP verification preserved for valuable/high-risk items (`risk_tier=1`).
+
+### Admin Delete Controls
+- New `destroy()` actions on `FoundItemAdminViewSet` and `LostItemViewSet`: admin-only soft-delete.
+- Soft-archive: sets status to ARCHIVED, dismisses active matches, records `REPORT_ARCHIVED` audit event with `action_type=ADMIN_DELETE`.
+- Items with related claims/pickup/handover history get `history_preserved=True` in the response.
+- Frontend: Dashboard "Delete Report" button opens confirmation dialog; "Archive" renamed "Delete" in table actions.
+- Non-admin staff (custodian) receive 403; students receive 403.
+
+### Bug Fix: Ownership Verification Guard
+- Fixed critical bug in `backend/handovers/views.py`: `if not verif or not (...)` was blocking all approved claims that had an `OwnershipVerification` object.
+- Corrected to `if verif and not (...)`: only rejects if verification exists but answer is empty.
+
+### Test Results (Targeted)
+| Suite | Tests | Result |
+|-------|-------|--------|
+| `items.tests_unique_ids` | 6 | ✅ All pass |
+| `items.tests_admin_handover_otp` | 20 | ✅ All pass |
+| `items.tests_fraud_prevention` | 31 | ✅ All pass |
+| Frontend build (`tsc && vite build`) | — | ✅ 0 errors |
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `backend/items/models.py` | ID immutability: `editable=False` + save guard |
+| `backend/items/views.py` | Admin `destroy()` for found and lost items |
+| `backend/items/services/matching.py` | Found ID + station in match notifications |
+| `backend/handovers/views.py` | Fix ownership verification logic bug |
+| `frontend/src/components/FoundItemSticker.tsx` | New printable sticker component |
+| `frontend/src/pages/StudentReportFoundPage.tsx` | Sticker on success screen |
+| `frontend/src/pages/RegisterFoundItemPage.tsx` | Full Found ID + sticker on success |
+| `frontend/src/pages/DashboardPage.tsx` | Deposit button, Delete button, sticker modal, audit events |
+| `frontend/src/components/CustodianHandoverModal.tsx` | Deposit confirmation + sticker UI |
+| `frontend/src/pages/MatchesPage.tsx` | Found ID badge in match cards and modal |
+| `frontend/src/pages/RecoveryPage.tsx` | Prominent Found ID box for approved claims |
+
 ### Match Notifications (Phase 10)
 * **Trigger Points**: `MATCH_FOUND` notifications are created by the real matching engine — `evaluate_lost_item_matches` (when a student submits a lost report) and `evaluate_found_item_matches` (when staff publish a found item). Both paths use `notify=True` from existing views.
 * **Deduplication**: Each lost report receives at most **one** `MATCH_FOUND` notification, keyed on `related_object_id = lost_item.public_id`. Re-running matching or re-publishing a found item never creates a duplicate.
@@ -78,6 +149,48 @@ All requirements across the platform have been inspected, implemented, and verif
   - Frontend: `http://localhost:5173/` (Responding HTTP 200)
 
 ---
+
+
+---
+
+## Phase 6: End-to-End Workflow & Acceptance Testing
+
+### Automated Test Coverage & Results
+Comprehensive targeted regression & end-to-end test execution covering 79 targeted automated tests:
+
+| Suite | File | Tests | Status | Scope |
+|-------|------|-------|--------|-------|
+| E2E Recovery Workflow | `items.tests_e2e_workflow` | 15 | ✅ 15/15 Pass | Complete Lost->Found->Deposit->Match->Claim->Handover->Audit trail |
+| Unique IDs & Custody | `items.tests_unique_ids` | 13 | ✅ 13/13 Pass | ID format (`RNT-L-* / RNT-F-*`), immutability, exact ID lookup, admin delete |
+| Admin Handover & OTP | `items.tests_admin_handover_otp` | 20 | ✅ 20/20 Pass | Valuable OTP verification, non-valuable fast handover, dispute blocking |
+| Fraud Prevention | `items.tests_fraud_prevention` | 31 | ✅ 31/31 Pass | Rate limiting, brute-force OTP lockout, ownership verification checks |
+| **Total Automated Tests** | | **79** | **✅ 100% Pass** | Ran in 190.677s |
+
+### Frontend Build Verification
+- `npm run build` (`tsc && vite build`): ✅ Built cleanly with 0 TypeScript errors and 0 build warnings.
+
+### Workflow & Invariant Acceptance Matrix
+1. **Unique Report IDs**:
+   - Lost reports generate permanent `RNT-L-XXXXXX`; Found reports generate permanent `RNT-F-XXXXXX`.
+   - Backend database model guard prevents ID mutation on existing records.
+   - IDs are displayed on report submissions, dashboard, matches list, and recovery desk cards.
+2. **Found Item Deposit & Printable Sticker**:
+   - `FoundItemSticker` component renders exclusively Found ID and item category on a 4in x 2.5in printable thermal layout.
+   - No QR codes, student names, phone numbers, or emails appear on physical stickers.
+   - Items remain in `DEPOSIT_PENDING` until custodian verifies and confirms physical receipt.
+3. **Fast Owner Collection**:
+   - Match notifications include the Found ID and station code for prompt pickup.
+   - Recovery page displays a dedicated "Found Report ID to tell Custodian" block with station details.
+   - Custodians complete handover via single-click confirmation for verified ordinary items.
+   - Atomic state transitions: updates Found item (`RESOLVED/COLLECTED`), Lost item (`RESOLVED`), Match (`CLAIMED`), Handover (`COMPLETED`), and records an audit log.
+4. **Valuable Item Protection & Fraud Controls**:
+   - High-risk items (`risk_tier=1`) require 6-digit OTP verification.
+   - 5 failed OTP attempts lock the handover to prevent brute force attacks.
+   - Active disputes block handover until resolved by administrators.
+5. **Admin Deletion & Custodial Audit Preservation**:
+   - Admins can soft-archive Lost and Found reports with required audit reason.
+   - Prior custody, claim, and handover history remain intact (`history_preserved=True`).
+   - Custodians and students are strictly blocked with 403 Forbidden on report deletion.
 
 ## 3. MANUAL ACCEPTANCE TESTING CHECKLIST
 

@@ -312,6 +312,81 @@ class FoundItemAdminViewSet(viewsets.ModelViewSet):
                 }
             )
 
+    def destroy(self, request, *args, **kwargs):
+        """
+        Authorized admin action to delete / archive a found item report.
+        Enforces admin-only permissions.
+        Preserves custody, handover and audit history: records with related claims,
+        custody events, or handovers are safely archived/soft-deleted rather than hard deleted.
+        """
+        user = request.user
+        is_admin = bool(
+            user and user.is_authenticated and (
+                getattr(user, 'role', '') in ['admin', 'superadmin'] or
+                getattr(user, 'is_superuser', False)
+            )
+        )
+        if not is_admin:
+            return Response(
+                {'detail': 'Only authorized administrators can delete or archive reports.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        item = self.get_object()
+        reason = ''
+        if isinstance(request.data, dict):
+            reason = request.data.get('reason', '').strip()
+        if not reason:
+            reason = request.query_params.get('reason', '').strip() or 'Administrative deletion'
+
+        from django.db import transaction
+        from audit.models import AuditLog
+        from items.models import Match, MatchStatus
+        from pickup.models import Claim, PickupRequest
+        from handovers.models import Handover
+
+        has_related_history = (
+            item.claims.exists() or
+            PickupRequest.objects.filter(
+                content_type=ContentType.objects.get_for_model(FoundItem),
+                object_id=item.id
+            ).exists() or
+            Handover.objects.filter(found_item=item).exists() or
+            item.status in [ItemStatus.DEPOSITED, ItemStatus.COLLECTED, ItemStatus.SECURE_HOLD, ItemStatus.RESOLVED] or
+            AuditLog.objects.filter(target_type='FoundItem', target_id=str(item.public_id)).exists()
+        )
+
+        with transaction.atomic():
+            item.status = ItemStatus.ARCHIVED
+            item.is_published = False
+            item.save(update_fields=['status', 'is_published', 'updated_at'])
+
+            Match.objects.filter(
+                found_item=item,
+                status__in=[MatchStatus.CANDIDATE, MatchStatus.REVIEWED]
+            ).update(status=MatchStatus.DISMISSED)
+
+            AuditLog.objects.create(
+                actor=request.user,
+                action='REPORT_ARCHIVED',
+                target_type='FoundItem',
+                target_id=str(item.public_id),
+                details={
+                    'item_title': item.title,
+                    'reason': reason,
+                    'admin_email': request.user.email,
+                    'action_type': 'ADMIN_DELETE',
+                    'history_preserved': has_related_history,
+                }
+            )
+
+        return Response({
+            'detail': 'Found report safely archived to preserve custody and audit history.',
+            'status': ItemStatus.ARCHIVED,
+            'public_id': item.public_id,
+            'history_preserved': has_related_history,
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='archive')
     def archive(self, request, public_id=None):
         """
@@ -764,7 +839,7 @@ class LostItemViewSet(viewsets.ModelViewSet):
         return obj
 
     def get_permissions(self):
-        if self.action in ['archive']:
+        if self.action in ['archive', 'destroy']:
             return [IsStaff()]
         return [IsAuthenticated()]
 
@@ -957,6 +1032,73 @@ class LostItemViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(lost_item)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Authorized admin action to delete / archive a lost item report.
+        Enforces admin-only permissions.
+        Preserves audit history and match records safely.
+        """
+        user = request.user
+        is_admin = bool(
+            user and user.is_authenticated and (
+                getattr(user, 'role', '') in ['admin', 'superadmin'] or
+                getattr(user, 'is_superuser', False)
+            )
+        )
+        if not is_admin:
+            return Response(
+                {'detail': 'Only authorized administrators can delete or archive reports.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        lost_item = self.get_object()
+        reason = ''
+        if isinstance(request.data, dict):
+            reason = request.data.get('reason', '').strip()
+        if not reason:
+            reason = request.query_params.get('reason', '').strip() or 'Administrative deletion'
+
+        from django.db import transaction
+        from audit.models import AuditLog
+        from items.models import Match, MatchStatus
+        from handovers.models import Handover
+
+        has_claimed_history = (
+            Handover.objects.filter(student=lost_item.user, status='COMPLETED').exists() or
+            lost_item.status == ItemStatus.RESOLVED or
+            AuditLog.objects.filter(target_type='LostItem', target_id=str(lost_item.public_id)).exists()
+        )
+
+        with transaction.atomic():
+            lost_item.status = ItemStatus.ARCHIVED
+            lost_item.save(update_fields=['status', 'updated_at'])
+
+            Match.objects.filter(
+                lost_item=lost_item,
+                status__in=[MatchStatus.CANDIDATE, MatchStatus.REVIEWED]
+            ).update(status=MatchStatus.DISMISSED)
+
+            AuditLog.objects.create(
+                actor=request.user,
+                action='REPORT_ARCHIVED',
+                target_type='LostItem',
+                target_id=str(lost_item.public_id),
+                details={
+                    'category': lost_item.category,
+                    'reason': reason,
+                    'admin_email': request.user.email,
+                    'action_type': 'ADMIN_DELETE',
+                    'history_preserved': has_claimed_history,
+                }
+            )
+
+        return Response({
+            'detail': 'Lost report safely archived to preserve audit integrity.',
+            'status': ItemStatus.ARCHIVED,
+            'public_id': lost_item.public_id,
+            'history_preserved': has_claimed_history,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='archive', permission_classes=[IsStaff])
     def archive(self, request, pk=None):

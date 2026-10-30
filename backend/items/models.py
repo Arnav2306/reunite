@@ -44,7 +44,7 @@ def generate_found_id() -> str:
             return candidate
 
 class LostItem(models.Model):
-    public_id = models.CharField(max_length=36, unique=True)
+    public_id = models.CharField(max_length=36, unique=True, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='lost_items')
     category = models.CharField(max_length=100)
     description = models.TextField()
@@ -56,7 +56,11 @@ class LostItem(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        if not self.public_id:
+        if self.pk:
+            orig = LostItem.objects.filter(pk=self.pk).values('public_id').first()
+            if orig and orig['public_id']:
+                self.public_id = orig['public_id']
+        elif not self.public_id:
             self.public_id = generate_lost_id()
         super().save(*args, **kwargs)
 
@@ -64,7 +68,7 @@ class LostItem(models.Model):
         return f"LostItem {self.public_id}"
 
 class FoundItem(models.Model):
-    public_id = models.CharField(max_length=36, unique=True)
+    public_id = models.CharField(max_length=36, unique=True, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='found_items')
     title = models.CharField(max_length=200, default='')
     category = models.CharField(max_length=100)
@@ -102,7 +106,11 @@ class FoundItem(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        if not self.public_id:
+        if self.pk:
+            orig = FoundItem.objects.filter(pk=self.pk).values('public_id').first()
+            if orig and orig['public_id']:
+                self.public_id = orig['public_id']
+        elif not self.public_id:
             self.public_id = generate_found_id()
         super().save(*args, **kwargs)
 

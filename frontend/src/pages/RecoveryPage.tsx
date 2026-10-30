@@ -191,6 +191,16 @@ export const RecoveryPage: React.FC = () => {
                 {/* Detailed Instructions / Location & OTP Box */}
                 {claim.status === 'APPROVED' && (
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-3">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase text-blue-700 tracking-wider block">Found Report ID to tell Custodian</span>
+                        <span className="font-mono text-xl font-black text-blue-950">{item.public_id}</span>
+                      </div>
+                      <span className="text-xs font-semibold text-blue-800 bg-blue-100 px-3 py-1 rounded-md self-start sm:self-center">
+                        Give this ID at Desk
+                      </span>
+                    </div>
+
                     <div className="flex items-start space-x-2">
                       <MapPin className="w-4 h-4 text-slate-700 shrink-0 mt-0.5" />
                       <div>
@@ -249,7 +259,7 @@ export const RecoveryPage: React.FC = () => {
                       <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-blue-900 flex items-start space-x-2">
                         <CheckCircle2 className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
                         <div>
-                          <strong>Ready for Handover:</strong> Please visit the collection desk during operating hours and present your student ID to retrieve your item.
+                          <strong>Ready for Fast Handover:</strong> Visit the collection station above, tell the custodian your Found ID (<strong className="font-mono">{item.public_id}</strong>), and show your student ID card to retrieve your item.
                         </div>
                       </div>
                     )}

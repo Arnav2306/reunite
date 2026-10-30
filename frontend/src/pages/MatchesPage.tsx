@@ -285,6 +285,12 @@ export const MatchesPage: React.FC = () => {
                                 </span>
                               </div>
                             )}
+                            <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                              <span className="text-[11px] text-slate-500 font-medium">Found ID:</span>
+                              <span className="font-mono text-xs font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                {found.public_id}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Why we think this may match preview */}
@@ -373,6 +379,15 @@ export const MatchesPage: React.FC = () => {
                     <span className="font-medium text-slate-700">Holding Desk:</span> {inspectingMatch.found_item.collection_location.station_code} ({inspectingMatch.found_item.collection_location.building})
                   </div>
                 )}
+                <div className="flex items-center justify-between pt-1.5 border-t border-slate-200">
+                  <span className="font-medium text-slate-700">Found ID:</span>
+                  <span className="font-mono font-bold text-xs text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                    {inspectingMatch.found_item.public_id}
+                  </span>
+                </div>
+              </div>
+              <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-[11px] text-blue-900">
+                <strong>Pickup Instructions:</strong> File your ownership claim below. Once approved by staff, visit the holding station and tell the custodian this Found ID (<span className="font-mono font-bold">{inspectingMatch.found_item.public_id}</span>) along with your student ID to collect your item.
               </div>
             </div>
 

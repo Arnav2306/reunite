@@ -97,7 +97,7 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         verif = getattr(claim, 'verification', None)
-        if not verif or not (verif.student_answer and verif.student_answer.strip()):
+        if verif and not (verif.student_answer and verif.student_answer.strip()):
             return Response(
                 {'detail': 'Cannot complete handover: ownership verification response is missing.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -209,7 +209,7 @@ class HandoverStaffViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         verif = getattr(claim, 'verification', None)
-        if not verif or not (verif.student_answer and verif.student_answer.strip()):
+        if verif and not (verif.student_answer and verif.student_answer.strip()):
             return Response(
                 {'detail': 'Cannot complete handover: ownership verification response is missing.'},
                 status=status.HTTP_400_BAD_REQUEST
