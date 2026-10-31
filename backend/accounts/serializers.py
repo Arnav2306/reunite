@@ -11,6 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'public_id',
+            'admin_id',
             'name',
             'email',
             'college_email',
@@ -86,6 +87,7 @@ class StaffUserSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'public_id',
+            'admin_id',
             'name',
             'email',
             'personal_email',
@@ -145,7 +147,8 @@ class AdminCreateUserSerializer(serializers.Serializer):
 
 def find_user_by_identifier(identifier: str):
     """
-    Find user by email, personal_email, or mobile number with normalization:
+    Find user by admin_id, email, personal_email, or mobile number with normalization:
+    - Admin ID exact match (case-insensitive)
     - Case-insensitive email and personal_email matching
     - Mobile matching with whitespace/dash/parentheses stripping
     - Handles variations with or without country code (+91, 91, 0) and 10-digit suffixes
@@ -172,13 +175,14 @@ def find_user_by_identifier(identifier: str):
             phone_candidates.add(digits_only[-10:])
 
     return User.objects.filter(
-        Q(email__iexact=cleaned)
+        Q(admin_id__iexact=cleaned)
+        | Q(email__iexact=cleaned)
         | Q(personal_email__iexact=cleaned)
         | Q(mobile_number__in=phone_candidates)
     ).first()
 
 class LoginSerializer(serializers.Serializer):
-    identifier = serializers.CharField(help_text="Email or mobile number")
+    identifier = serializers.CharField(help_text="Admin ID, email, or mobile number")
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
@@ -191,7 +195,7 @@ class LoginSerializer(serializers.Serializer):
         user = find_user_by_identifier(identifier)
 
         if not user or not user.check_password(password):
-            raise serializers.ValidationError('Invalid email/mobile number or password.')
+            raise serializers.ValidationError('Invalid email/mobile number, Admin ID, or password.')
 
         if not user.is_active:
             raise serializers.ValidationError('This user account is inactive.')

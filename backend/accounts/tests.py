@@ -347,4 +347,59 @@ class AccountsAuthTests(TestCase):
         self.client.force_authenticate(user=admin)
         self.assertEqual(self.client.get('/api/pickup/disputes/admin/').status_code, status.HTTP_200_OK)
 
+    def test_superadmin_created_with_admin_id_without_email(self):
+        su = User(
+            admin_id='RNT-TEST-SU01',
+            name='Test Super Admin',
+            role='superadmin',
+            is_staff=True,
+            is_superuser=True,
+            is_active=True,
+        )
+        su.set_password('TestPass123!')
+        su.save()
+        self.assertEqual(su.admin_id, 'RNT-TEST-SU01')
+        self.assertIsNone(su.email)
+        self.assertTrue(su.password.startswith('pbkdf2_sha256$'))
+        self.assertNotIn('TestPass123!', su.password)
+
+        # Login using admin_id as identifier on portal='admin'
+        resp = self.client.post('/api/auth/login/', {
+            'identifier': 'RNT-TEST-SU01',
+            'password': 'TestPass123!',
+            'portal': 'admin'
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('token', resp.data)
+        self.assertEqual(resp.data['user']['admin_id'], 'RNT-TEST-SU01')
+        self.assertEqual(resp.data['user']['role'], 'superadmin')
+
+        # Login with wrong password is rejected
+        bad_resp = self.client.post('/api/auth/login/', {
+            'identifier': 'RNT-TEST-SU01',
+            'password': 'WrongPassword!',
+            'portal': 'admin'
+        }, format='json')
+        self.assertEqual(bad_resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_setup_initial_superadmin_command(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+
+        # Run command to create account
+        call_command('setup_initial_superadmin', admin_id='RNT-CMD-001', password='CmdPassword123!', stdout=out)
+        self.assertIn('[SUCCESS]', out.getvalue())
+        user = User.objects.get(admin_id='RNT-CMD-001')
+        self.assertEqual(user.role, 'superadmin')
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password('CmdPassword123!'))
+
+        # Run again -> duplicate prevention skips creation
+        out_dup = StringIO()
+        call_command('setup_initial_superadmin', admin_id='RNT-CMD-001', password='CmdPassword123!', stdout=out_dup)
+        self.assertIn('[ALREADY EXISTS]', out_dup.getvalue())
+
+
 

@@ -30,7 +30,9 @@ class LoginView(APIView):
         # Support either identifier or email/username
         data = request.data.copy()
         if 'identifier' not in data:
-            if 'email' in data:
+            if 'admin_id' in data:
+                data['identifier'] = data['admin_id']
+            elif 'email' in data:
                 data['identifier'] = data['email']
             elif 'username' in data:
                 data['identifier'] = data['username']

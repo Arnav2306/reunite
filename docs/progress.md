@@ -438,11 +438,43 @@ Commit and push all Phase 7-9 changes and trigger a Railway redeploy, then verif
 
 ### Test Suite Execution Summary
 - `python manage.py test accounts.tests_phase12_acceptance`: **10/10 PASSED** (45.385s)
-- `python manage.py test accounts`: **32/32 PASSED** (84.923s)
+- `python manage.py test accounts`: **34/34 PASSED** (84.429s)
 - `python manage.py test items.tests_unique_ids items.tests_admin_handover_otp items.tests_fraud_prevention`: **64/64 PASSED** (155.271s)
 - `python manage.py test collectionpoint`: **7/7 PASSED** (14.659s)
 - `python manage.py test items.tests_hide_found_details`: **9/9 PASSED** (25.708s)
 - `python manage.py check`: **0 issues**
 - `python manage.py makemigrations --check --dry-run`: **0 changes detected**
-- `npm run build`: **Built cleanly in 1.62s** (0 TypeScript errors)
+- `npm run build`: **Built cleanly in 2.83s** (0 TypeScript errors)
+
+---
+
+## Phase 14: Super Admin Production Setup
+
+### 1. Architecture & Model Enhancements
+- **Admin ID Model Field** (`backend/accounts/models.py`):
+  - Added `admin_id = models.CharField(max_length=50, blank=True, null=True, unique=True, db_index=True)` to `User`.
+  - Updated `UserManager._create_user` and `create_superuser` to allow account creation using `admin_id` without requiring an email address.
+  - Safe, non-destructive migration: `backend/accounts/migrations/0004_user_admin_id.py` (nullable with database index).
+- **Resolver & Serializer Support** (`backend/accounts/serializers.py`):
+  - `find_user_by_identifier` updated with case-insensitive `admin_id` matching: `Q(admin_id__iexact=cleaned)`.
+  - `UserSerializer` and `StaffUserSerializer` include `admin_id` field.
+  - Preserved existing email, personal email, and mobile phone authentication for Student, Custodian, and Admin users.
+- **Admin Portal Login Integration** (`backend/accounts/views.py` & `frontend/src/pages/LoginPage.tsx`):
+  - Backend `LoginView` accepts `identifier` or `admin_id`.
+  - Frontend Admin Portal mode displays dynamic labels and placeholders: `Admin ID or Email` / `RNT-SUPER-001 or admin@campus.edu`.
+
+### 2. Idempotent Management Command
+- `backend/accounts/management/commands/setup_initial_superadmin.py`:
+  - Provisioning command supporting `--admin-id`, `--name`, `--email`, and password resolution via `--password`, `INITIAL_SUPERADMIN_PASSWORD` env var, or interactive prompt.
+  - Strictly stores password hash via `user.set_password()` (PBKDF2-SHA256); plaintext is never stored or logged.
+  - Idempotent: checks if `admin_id` already exists and exits safely with `[ALREADY EXISTS]` without modifying existing data.
+  - Emits audit log entry (`SUPERADMIN_INITIAL_SETUP`).
+
+### 3. Railway Production Deployment Compatibility
+- Verified Railway release execution in both root `Procfile` and `backend/Procfile`:
+  `release: python backend/manage.py migrate --no-input`
+  and in `backend/Dockerfile`:
+  `CMD ["sh", "-c", "python manage.py migrate --no-input && gunicorn reunite_backend.wsgi:application ..."]`
+  ensuring migration `0004_user_admin_id` is executed automatically before application startup.
+
 

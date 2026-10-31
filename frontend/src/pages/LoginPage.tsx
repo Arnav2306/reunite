@@ -46,7 +46,10 @@ export const LoginPage: React.FC = () => {
 
     const trimmedIdentifier = identifier.trim();
     if (!trimmedIdentifier || !password) {
-      setError('Please enter your email or mobile number and password.');
+      setError(portalMode === 'admin'
+        ? 'Please enter your Admin ID or staff email and password.'
+        : 'Please enter your email or mobile number and password.'
+      );
       return;
     }
 
@@ -153,7 +156,7 @@ export const LoginPage: React.FC = () => {
                 htmlFor="identifier"
                 className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider"
               >
-                Email Address or Phone Number
+                {portalMode === 'admin' ? 'Admin ID or Email' : 'Email Address or Phone Number'}
               </label>
               <div className="mt-1.5">
                 <input
@@ -164,14 +167,14 @@ export const LoginPage: React.FC = () => {
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder={portalMode === 'student' ? 'alex@gmail.com or 9876543210' : 'admin@campus.edu or mobile'}
+                  placeholder={portalMode === 'admin' ? 'RNT-SUPER-001 or admin@campus.edu' : 'alex@gmail.com or 9876543210'}
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm shadow-2xs focus:outline-hidden focus:ring-1 focus:ring-blue-600 focus:border-blue-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                 />
               </div>
               <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                 {portalMode === 'student'
                   ? 'Sign in with your student account credentials.'
-                  : 'Authorized personnel credentials only.'}
+                  : 'Enter your Admin ID (e.g. RNT-SUPER-001) or authorized personnel email.'}
               </p>
             </div>
 

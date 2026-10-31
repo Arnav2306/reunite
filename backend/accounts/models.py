@@ -4,8 +4,8 @@ import uuid
 
 class UserManager(BaseUserManager):
     def _create_user(self, email, password, **extra_fields):
-        if not email and not extra_fields.get('mobile_number'):
-            raise ValueError('Either email or mobile number must be set')
+        if not email and not extra_fields.get('mobile_number') and not extra_fields.get('admin_id'):
+            raise ValueError('Either email, mobile number, or admin_id must be set')
         if email:
             email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
@@ -18,12 +18,12 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_superuser', False)
         return self._create_user(email, password, **extra_fields)
 
-    def create_superuser(self, email, password, **extra_fields):
+    def create_superuser(self, email=None, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', 'superadmin')
-        if not email:
-            raise ValueError('Superuser must have an email.')
+        if not email and not extra_fields.get('admin_id'):
+            raise ValueError('Superuser must have an email or admin_id.')
         if extra_fields.get('is_staff') is not True or extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_staff=True and is_superuser=True.')
         return self._create_user(email, password, **extra_fields)
@@ -37,6 +37,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     ]
     id = models.BigAutoField(primary_key=True)
     public_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    admin_id = models.CharField(max_length=50, blank=True, null=True, unique=True, db_index=True)
     email = models.EmailField('email address', unique=True, null=True, blank=True)
     personal_email = models.EmailField(blank=True, null=True)
     mobile_number = models.CharField(max_length=20, blank=True, null=True, unique=True)
@@ -67,4 +68,5 @@ class User(AbstractBaseUser, PermissionsMixin):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.email} ({self.get_role_display()})"
+        identifier = self.admin_id or self.email or self.mobile_number or str(self.public_id)
+        return f"{identifier} ({self.get_role_display()})"
