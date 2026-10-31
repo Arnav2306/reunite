@@ -98,25 +98,36 @@ export const SignupPage: React.FC = () => {
             style={{ maxWidth: '180px' }}
           />
         </div>
-        <h2 className="mt-5 text-xl font-semibold text-slate-900">
-          Create your account
+        <h2 className="mt-5 text-xl font-semibold text-slate-900 dark:text-white">
+          Student Portal Registration
         </h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Register to file reports and track custody of belongings
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Public registration for students. New accounts receive Student privileges by default.
         </p>
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-xs border border-slate-200 rounded-2xl sm:px-10">
+        <div className="bg-white dark:bg-slate-800 py-8 px-6 shadow-xs border border-slate-200 dark:border-slate-700 rounded-2xl sm:px-10">
+          {/* Admin Policy Notice */}
+          <div className="mb-5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400 space-y-1">
+            <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+              Role-Based Account Policy
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              Public signup creates <strong>Student</strong> accounts. Admin and Custodian roles cannot be selected or assigned here; they are provisioned exclusively by authenticated Super Admins.
+            </p>
+          </div>
+
           {/* Method Selector Tabs: Continue with Email vs Continue with Phone */}
-          <div className="mb-6 grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+          <div className="mb-6 grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-700/60 rounded-xl border border-slate-200 dark:border-slate-600">
             <button
               type="button"
               onClick={() => { setSignupMethod('email'); setError(null); }}
               className={`flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
                 signupMethod === 'email'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Mail className="w-4 h-4" />
@@ -127,8 +138,8 @@ export const SignupPage: React.FC = () => {
               onClick={() => { setSignupMethod('phone'); setError(null); }}
               className={`flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all ${
                 signupMethod === 'phone'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Phone className="w-4 h-4" />
@@ -137,12 +148,12 @@ export const SignupPage: React.FC = () => {
           </div>
 
           {/* Helper text for chosen method */}
-          <div className="mb-5 p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-800 flex items-start gap-2">
-            <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="mb-5 p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
+            <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
             <span>
               {signupMethod === 'email'
-                ? 'Personal Gmail is recommended. Other valid email addresses are accepted too.'
-                : 'Use your mobile number to create your account.'}
+                ? 'Personal Gmail is recommended. Other valid personal or college emails are accepted.'
+                : 'Use your mobile phone number to create your student account.'}
             </span>
           </div>
 
@@ -354,11 +365,17 @@ export const SignupPage: React.FC = () => {
             </div>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-200 text-center">
-            <p className="text-xs text-slate-600">
+          <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 text-center space-y-2">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               Already have an account?{' '}
-              <Link to="/login" className="font-semibold text-slate-900 hover:underline">
-                Sign in with email or phone
+              <Link to="/login" className="font-semibold text-slate-900 dark:text-white hover:underline">
+                Sign in to Student Portal
+              </Link>
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Campus Staff or Administrator?{' '}
+              <Link to="/admin/login" className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                Sign in to Admin Portal →
               </Link>
             </p>
           </div>

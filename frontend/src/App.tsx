@@ -24,6 +24,8 @@ import { MyLostItemsPage } from './pages/MyLostItemsPage';
 import { MatchesPage } from './pages/MatchesPage';
 import { AdminCollectionPointsPage } from './pages/AdminCollectionPointsPage';
 import { StudentReportFoundPage } from './pages/StudentReportFoundPage';
+import { AdminUsersPage } from './pages/AdminUsersPage';
+import { AdminDisputesPage } from './pages/AdminDisputesPage';
 
 import { CampusStationsPage } from './pages/CampusStationsPage';
 
@@ -58,36 +60,43 @@ export const App: React.FC = () => {
                   {/* Authentication Routes (Redirect away if already logged in) */}
                   <Route element={<PublicOnlyRoute />}>
                     <Route path="/login" element={<LoginPage />} />
+                    <Route path="/admin/login" element={<LoginPage />} />
                     <Route path="/signup" element={<SignupPage />} />
                   </Route>
 
-                  {/* Protected Routes (Redirect to /login if unauthenticated) */}
+                  {/* General Protected Routes (All Authenticated Roles) */}
                   <Route element={<ProtectedRoute />}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/notifications" element={<NotificationsPage />} />
-                    <Route path="/recovery" element={<RecoveryPage />} />
+                  </Route>
 
+                  {/* Student Only Routes */}
+                  <Route element={<ProtectedRoute allowedRoles={['student']} />}>
+                    <Route path="/recovery" element={<RecoveryPage />} />
                     {/* Student: Report Lost Item */}
                     <Route path="/lost" element={<ReportLostItemPage />} />
-
                     {/* Student: Report Found Item (photo-first AI flow) */}
                     <Route path="/found" element={<StudentReportFoundPage />} />
-
                     {/* Student: My Reports */}
                     <Route path="/reports" element={<MyLostItemsPage />} />
                     <Route path="/my-reports" element={<MyLostItemsPage />} />
-
                     {/* Student: Matches */}
                     <Route path="/matches" element={<MatchesPage />} />
                     <Route path="/my-matches" element={<MatchesPage />} />
                   </Route>
 
-                  {/* Admin Only Routes (Restricted to Custodian, Admin, Superadmin) */}
+                  {/* Custodian & Admin Shared Routes (Physical Handovers) */}
                   <Route element={<ProtectedRoute allowedRoles={['custodian', 'admin', 'superadmin']} />}>
+                    <Route path="/admin/handovers" element={<AdminHandoverPage />} />
+                  </Route>
+
+                  {/* Admin & Super Admin Only Routes */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'superadmin']} />}>
+                    <Route path="/admin/users" element={<AdminUsersPage />} />
+                    <Route path="/admin/disputes" element={<AdminDisputesPage />} />
                     <Route path="/admin/register-found" element={<RegisterFoundItemPage />} />
                     <Route path="/admin/verification" element={<AdminVerificationPage />} />
-                    <Route path="/admin/handovers" element={<AdminHandoverPage />} />
                     <Route path="/admin/collection-points" element={<AdminCollectionPointsPage />} />
                   </Route>
 

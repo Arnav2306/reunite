@@ -4,7 +4,10 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 
-from .serializers import UserSerializer, SignupSerializer, LoginSerializer
+from .serializers import UserSerializer, SignupSerializer, LoginSerializer, StaffUserSerializer, AdminCreateUserSerializer
+from .permissions import IsAdmin
+from .models import User
+from audit.models import AuditLog
 
 class SignupView(APIView):
     permission_classes = [AllowAny]
@@ -37,11 +40,75 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
+            portal = data.get('portal')
+            if portal == 'admin':
+                if getattr(user, 'role', '') not in ['custodian', 'admin', 'superadmin'] and not getattr(user, 'is_staff', False):
+                    return Response({
+                        'detail': 'Access denied: student accounts cannot sign in through the Admin Portal. Please use the Student Portal.'
+                    }, status=status.HTTP_403_FORBIDDEN)
+
             token, _ = Token.objects.get_or_create(user=user)
             return Response({
                 'token': token.key,
                 'user': UserSerializer(user).data,
             }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class AdminUserManagementView(APIView):
+    """
+    Dedicated staff user management for Admin and Super Admin.
+    - GET: List staff users (Admins, Custodians).
+    - POST: Provision staff accounts (Admin accounts can ONLY be created by Super Admin).
+    """
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        role_param = request.query_params.get('role')
+        qs = User.objects.all().order_by('-date_joined')
+        if role_param and role_param != 'all':
+            qs = qs.filter(role=role_param)
+        else:
+            # By default list staff / operational accounts
+            qs = qs.filter(role__in=['admin', 'superadmin', 'custodian'])
+
+        serializer = StaffUserSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        role_to_create = request.data.get('role')
+        caller = request.user
+        is_superadmin = (getattr(caller, 'role', '') == 'superadmin' or getattr(caller, 'is_superuser', False))
+
+        if role_to_create == 'admin' and not is_superadmin:
+            return Response({
+                'detail': 'Permission denied: only Super Admins can create Admin accounts.'
+            }, status=status.HTTP_403_FORBIDDEN)
+
+        if role_to_create not in ['admin', 'custodian']:
+            return Response({
+                'detail': 'Invalid role. Only admin or custodian accounts can be created through this interface.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AdminCreateUserSerializer(data=request.data)
+        if serializer.is_valid():
+            new_user = serializer.save()
+            try:
+                AuditLog.objects.create(
+                    actor=caller,
+                    action='STAFF_USER_CREATED',
+                    target_type='User',
+                    target_id=str(new_user.public_id),
+                    details={
+                        'created_role': new_user.role,
+                        'created_email': new_user.email,
+                        'created_name': new_user.name,
+                        'created_by': caller.email,
+                    }
+                )
+            except Exception:
+                pass
+
+            return Response(StaffUserSerializer(new_user).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MeView(APIView):

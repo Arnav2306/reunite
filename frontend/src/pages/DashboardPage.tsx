@@ -11,7 +11,7 @@ import {
   Sparkles, MapPin, Eye, X,
   ShieldAlert, RefreshCw, Star, ClipboardList,
   History, MessageSquare, Trash2, AlertTriangle,
-  Printer, QrCode
+  Printer, QrCode, Users
 } from 'lucide-react';
 import { QrScannerModal } from '../components/QrScannerModal';
 import { CustodianHandoverModal } from '../components/CustodianHandoverModal';
@@ -19,6 +19,8 @@ import { CustodianHandoverModal } from '../components/CustodianHandoverModal';
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const isStaff = user?.role && ['custodian', 'admin', 'superadmin'].includes(user.role);
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const isCustodian = user?.role === 'custodian';
 
   // --- Real Admin Dashboard Queries ---
   const { data: stats } = useQuery<AdminStats>({
@@ -51,7 +53,7 @@ export const DashboardPage: React.FC = () => {
       const res = await api.get<any>('/api/audit/logs/');
       return Array.isArray(res) ? res : res.results || [];
     },
-    enabled: !!isStaff,
+    enabled: !!isAdmin,
   });
 
   const { data: feedbackSummary } = useQuery<{
@@ -60,7 +62,7 @@ export const DashboardPage: React.FC = () => {
   }>({
     queryKey: ['admin-feedback-summary'],
     queryFn: async () => api.get('/api/pickup/feedback/summary/'),
-    enabled: !!isStaff,
+    enabled: !!isAdmin,
   });
 
   const { data: feedbacksList = [] } = useQuery<Array<{
@@ -75,7 +77,7 @@ export const DashboardPage: React.FC = () => {
       const res = await api.get<any>('/api/pickup/feedback/');
       return Array.isArray(res) ? res : res.results || [];
     },
-    enabled: !!isStaff,
+    enabled: !!isAdmin,
   });
 
   const queryClient = useQueryClient();
@@ -839,15 +841,18 @@ export const DashboardPage: React.FC = () => {
   // ─── ADMIN / CUSTODIAN DASHBOARD ─────────────────────────────────────────
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Admin Header */}
+      {/* Role-Specific Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Campus Custodial Operations</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Logged in as <strong>{user?.name}</strong> · Role: <span className="capitalize font-semibold text-slate-800">{user?.role}</span>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            {isCustodian ? 'Custodian Station & Custody Operations' : 'Campus Lost & Found Administration'}
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Logged in as <strong>{user?.name}</strong> · Role: <span className="capitalize font-semibold text-slate-800 dark:text-slate-200">{user?.role}</span>
+            {isCustodian && ' · Physical Custody & Station Duty'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             id="btn-dashboard-scan-qr"
             type="button"
@@ -857,20 +862,47 @@ export const DashboardPage: React.FC = () => {
             <QrCode className="w-3.5 h-3.5" />
             Scan Item QR
           </button>
-          <Link
-            to="/admin/collection-points"
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-colors shadow-2xs"
-          >
-            <MapPin className="w-3.5 h-3.5 text-slate-500" />
-            Manage Stations
-          </Link>
-          <Link
-            to="/admin/register-found"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs"
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            Register Found Item
-          </Link>
+          {isAdmin && (
+            <>
+              <Link
+                to="/admin/users"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-colors shadow-2xs"
+              >
+                <Users className="w-3.5 h-3.5 text-slate-500" />
+                Manage Users
+              </Link>
+              <Link
+                to="/admin/collection-points"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-colors shadow-2xs"
+              >
+                <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                Manage Stations
+              </Link>
+              <Link
+                to="/admin/disputes"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl transition-colors shadow-2xs"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                Disputes
+              </Link>
+              <Link
+                to="/admin/register-found"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Register Found Item
+              </Link>
+            </>
+          )}
+          {isCustodian && (
+            <Link
+              to="/admin/handovers"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs"
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+              Process Handover
+            </Link>
+          )}
         </div>
       </div>
 
@@ -934,7 +966,7 @@ export const DashboardPage: React.FC = () => {
         )}
       </div>
 
-      {/* Section 10: Admin Operations Sub-Navigation Tabs */}
+      {/* Section 10: Admin & Custodian Operations Sub-Navigation Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <button
           onClick={() => setActiveAdminTab('queue')}
@@ -945,7 +977,7 @@ export const DashboardPage: React.FC = () => {
           }`}
         >
           <Package className="w-3.5 h-3.5" />
-          Recovery Queue ({recoveryQueue.length})
+          {isCustodian ? 'Deposits & Custody' : 'Recovery Queue'} ({recoveryQueue.length})
         </button>
         <button
           onClick={() => setActiveAdminTab('tasks')}
@@ -956,30 +988,34 @@ export const DashboardPage: React.FC = () => {
           }`}
         >
           <ClipboardList className="w-3.5 h-3.5" />
-          Custodian Task Queue ({stats?.station_tasks ?? 0})
+          {isCustodian ? 'Station Task Queue' : 'Custodian Task Queue'} ({stats?.station_tasks ?? 0})
         </button>
-        <button
-          onClick={() => setActiveAdminTab('audit')}
-          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
-            activeAdminTab === 'audit'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
-          }`}
-        >
-          <History className="w-3.5 h-3.5" />
-          Audit Log Browser ({auditLogs.length})
-        </button>
-        <button
-          onClick={() => setActiveAdminTab('feedback')}
-          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
-            activeAdminTab === 'feedback'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
-          }`}
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          Student Feedback ({feedbackSummary?.total_feedback ?? 0})
-        </button>
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => setActiveAdminTab('audit')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+                activeAdminTab === 'audit'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              Audit Log Browser ({auditLogs.length})
+            </button>
+            <button
+              onClick={() => setActiveAdminTab('feedback')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+                activeAdminTab === 'feedback'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Student Feedback ({feedbackSummary?.total_feedback ?? 0})
+            </button>
+          </>
+        )}
       </div>
 
       {/* TAB 1: REPORTS & CUSTODY MANAGEMENT QUEUE */}
@@ -1202,7 +1238,7 @@ export const DashboardPage: React.FC = () => {
                               Inspect
                             </button>
                           )}
-                          {r.status !== 'ARCHIVED' && (
+                          {isAdmin && r.status !== 'ARCHIVED' && (
                             <button
                               onClick={() => setArchiveTarget({ type: r.reportType, id: r.id, title: r.title })}
                               className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 rounded-lg transition-colors"

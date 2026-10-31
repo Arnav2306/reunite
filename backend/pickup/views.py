@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction, IntegrityError
 from django.contrib.contenttypes.models import ContentType
-from accounts.permissions import IsStudent, IsStaff
+from accounts.permissions import IsStudent, IsStaff, IsAdmin
 from .models import Claim, ClaimStatus, OwnershipVerification, PickupRequest
 from .serializers import ClaimStudentSerializer, ClaimAdminSerializer, CreateClaimSerializer
 from items.models import FoundItem, ItemStatus
@@ -481,13 +481,13 @@ class StudentDisputeViewSet(viewsets.ModelViewSet):
 
 class StaffDisputeViewSet(viewsets.ModelViewSet):
     """
-    Staff Dispute Queue Management API.
-    Custodial staff and admins review, request info, escalate, or resolve disputes.
+    Admin Dispute Queue Management API.
+    Administrators review, request info, escalate, or resolve disputes.
     """
     from .models import Dispute
     from .serializers import DisputeSerializer
     serializer_class = DisputeSerializer
-    permission_classes = [IsStaff]
+    permission_classes = [IsAdmin]
     lookup_field = 'public_id'
 
     def get_queryset(self):

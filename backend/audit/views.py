@@ -1,15 +1,14 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from accounts.permissions import IsStaff
+from accounts.permissions import IsAdmin
 from .models import AuditLog
 from .serializers import AuditLogSerializer
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Staff-only audit log browser for institutional transparency and compliance.
+    Admin-only audit log browser for institutional transparency and compliance.
     """
     serializer_class = AuditLogSerializer
-    permission_classes = [IsStaff]
+    permission_classes = [IsAdmin]
 
     def get_queryset(self):
         qs = AuditLog.objects.all().select_related('actor').order_by('-timestamp')

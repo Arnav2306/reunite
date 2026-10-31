@@ -216,3 +216,135 @@ class AccountsAuthTests(TestCase):
         self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
         self.assertIn('token', login_resp.data)
 
+    def test_login_portal_admin_rejects_student(self):
+        User.objects.create_user(email='student_portal@example.com', password='password123', name='Student Portal', role='student')
+        resp = self.client.post('/api/auth/login/', {
+            'identifier': 'student_portal@example.com',
+            'password': 'password123',
+            'portal': 'admin',
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('Access denied', resp.data['detail'])
+
+    def test_login_portal_admin_allows_admin_and_custodian(self):
+        User.objects.create_user(email='admin_portal@example.com', password='password123', name='Admin Portal', role='admin')
+        User.objects.create_user(email='custodian_portal@example.com', password='password123', name='Custodian Portal', role='custodian')
+
+        resp_admin = self.client.post('/api/auth/login/', {
+            'identifier': 'admin_portal@example.com',
+            'password': 'password123',
+            'portal': 'admin',
+        }, format='json')
+        self.assertEqual(resp_admin.status_code, status.HTTP_200_OK)
+
+        resp_cust = self.client.post('/api/auth/login/', {
+            'identifier': 'custodian_portal@example.com',
+            'password': 'password123',
+            'portal': 'admin',
+        }, format='json')
+        self.assertEqual(resp_cust.status_code, status.HTTP_200_OK)
+
+    def test_admin_user_endpoint_security(self):
+        student = User.objects.create_user(email='student_api@example.com', password='password123', name='Student', role='student')
+        custodian = User.objects.create_user(email='custodian_api@example.com', password='password123', name='Custodian', role='custodian')
+        admin = User.objects.create_user(email='admin_api@example.com', password='password123', name='Admin', role='admin')
+        superadmin = User.objects.create_superuser(email='superadmin_api@example.com', password='password123', name='Superadmin')
+
+        # 1. Unauthenticated cannot access
+        resp_unauth = self.client.get('/api/auth/users/')
+        self.assertEqual(resp_unauth.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # 2. Student gets 403
+        self.client.force_authenticate(user=student)
+        resp_student = self.client.get('/api/auth/users/')
+        self.assertEqual(resp_student.status_code, status.HTTP_403_FORBIDDEN)
+        resp_student_post = self.client.post('/api/auth/users/', {'name': 'New', 'email': 'new@test.com', 'password': 'pass', 'role': 'custodian'})
+        self.assertEqual(resp_student_post.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Custodian gets 403
+        self.client.force_authenticate(user=custodian)
+        resp_cust = self.client.get('/api/auth/users/')
+        self.assertEqual(resp_cust.status_code, status.HTTP_403_FORBIDDEN)
+        resp_cust_post = self.client.post('/api/auth/users/', {'name': 'New', 'email': 'new@test.com', 'password': 'pass', 'role': 'custodian'})
+        self.assertEqual(resp_cust_post.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 4. Admin cannot create Admin account (only Super Admin can)
+        self.client.force_authenticate(user=admin)
+        resp_admin_create_admin = self.client.post('/api/auth/users/', {
+            'name': 'New Admin',
+            'email': 'newadmin@campus.edu',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'role': 'admin',
+        }, format='json')
+        self.assertEqual(resp_admin_create_admin.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 5. Admin CAN create Custodian account
+        resp_admin_create_cust = self.client.post('/api/auth/users/', {
+            'name': 'New Custodian',
+            'email': 'newcustodian@campus.edu',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'role': 'custodian',
+        }, format='json')
+        self.assertEqual(resp_admin_create_cust.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_admin_create_cust.data['role'], 'custodian')
+
+        # 6. Super Admin CAN create Admin account
+        self.client.force_authenticate(user=superadmin)
+        resp_super_create_admin = self.client.post('/api/auth/users/', {
+            'name': 'Authorized Admin',
+            'email': 'authorizedadmin@campus.edu',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'role': 'admin',
+        }, format='json')
+        self.assertEqual(resp_super_create_admin.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp_super_create_admin.data['role'], 'admin')
+
+        # 7. Super Admin CAN create Custodian account
+        resp_super_create_cust = self.client.post('/api/auth/users/', {
+            'name': 'Super Custodian',
+            'email': 'supercust@campus.edu',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'role': 'custodian',
+        }, format='json')
+        self.assertEqual(resp_super_create_cust.status_code, status.HTTP_201_CREATED)
+
+        # 8. Cannot create superadmin or student via this endpoint
+        resp_super_bad_role = self.client.post('/api/auth/users/', {
+            'name': 'Hacked Super',
+            'email': 'hackedsuper@campus.edu',
+            'password': 'password123',
+            'password_confirm': 'password123',
+            'role': 'superadmin',
+        }, format='json')
+        self.assertEqual(resp_super_bad_role.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_createsuperuser_sets_superadmin_role(self):
+        su = User.objects.create_superuser(email='cli_superuser@campus.edu', password='password123', name='Root Admin')
+        self.assertEqual(su.role, 'superadmin')
+        self.assertTrue(su.is_staff)
+        self.assertTrue(su.is_superuser)
+
+    def test_role_security_audit_logs_and_disputes(self):
+        student = User.objects.create_user(email='student_sec@example.com', password='password123', name='Student Sec', role='student')
+        custodian = User.objects.create_user(email='custodian_sec@example.com', password='password123', name='Cust Sec', role='custodian')
+        admin = User.objects.create_user(email='admin_sec@example.com', password='password123', name='Admin Sec', role='admin')
+
+        # Audit logs: Student 403, Custodian 403, Admin 200
+        self.client.force_authenticate(user=student)
+        self.assertEqual(self.client.get('/api/audit/logs/').status_code, status.HTTP_403_FORBIDDEN)
+        self.client.force_authenticate(user=custodian)
+        self.assertEqual(self.client.get('/api/audit/logs/').status_code, status.HTTP_403_FORBIDDEN)
+        self.client.force_authenticate(user=admin)
+        self.assertEqual(self.client.get('/api/audit/logs/').status_code, status.HTTP_200_OK)
+
+        # Disputes queue: Custodian 403, Admin 200
+        self.client.force_authenticate(user=custodian)
+        self.assertEqual(self.client.get('/api/pickup/disputes/admin/').status_code, status.HTTP_403_FORBIDDEN)
+        self.client.force_authenticate(user=admin)
+        self.assertEqual(self.client.get('/api/pickup/disputes/admin/').status_code, status.HTTP_200_OK)
+
+

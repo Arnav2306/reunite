@@ -80,6 +80,69 @@ class SignupSerializer(serializers.Serializer):
         user = User.objects.create_user(email=email, password=password, **validated_data)
         return user
 
+class StaffUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'public_id',
+            'name',
+            'email',
+            'personal_email',
+            'mobile_number',
+            'role',
+            'is_active',
+            'date_joined',
+        ]
+        read_only_fields = ['id', 'public_id', 'date_joined']
+
+class AdminCreateUserSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    email = serializers.EmailField(required=True)
+    mobile_number = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
+    password = serializers.CharField(write_only=True, min_length=6)
+    password_confirm = serializers.CharField(write_only=True, min_length=6)
+    role = serializers.ChoiceField(choices=[('admin', 'Admin'), ('custodian', 'Custodian')])
+
+    def validate_email(self, value):
+        if value:
+            normalized = value.strip().lower()
+            if User.objects.filter(email__iexact=normalized).exists():
+                raise serializers.ValidationError('A user with this email already exists.')
+            return normalized
+        raise serializers.ValidationError('Email is required for staff accounts.')
+
+    def validate_mobile_number(self, value):
+        if value:
+            import re
+            cleaned = value.strip()
+            digits_only = re.sub(r'[\s\-\(\)]', '', cleaned)
+            if not re.match(r'^\+?[0-9]{7,15}$', digits_only):
+                raise serializers.ValidationError('Please enter a valid phone number (7 to 15 digits).')
+            if User.objects.filter(mobile_number=digits_only).exists():
+                raise serializers.ValidationError('A user with this mobile number already exists.')
+            return digits_only
+        return None
+
+    def validate(self, attrs):
+        password = attrs.get('password')
+        password_confirm = attrs.get('password_confirm')
+        if password != password_confirm:
+            raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('password_confirm', None)
+        password = validated_data.pop('password')
+        email = validated_data.pop('email')
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            is_staff=True,
+            **validated_data
+        )
+        return user
+
 def find_user_by_identifier(identifier: str):
     """
     Find user by email, personal_email, or mobile number with normalization:

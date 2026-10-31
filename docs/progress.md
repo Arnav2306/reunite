@@ -362,3 +362,87 @@ Commit and push all Phase 7-9 changes and trigger a Railway redeploy, then verif
 1. `GET https://reunite-production.up.railway.app/api/items/available-items/` returns HTTP 200.
 2. `GET https://reunite-production.up.railway.app/health/` returns HTTP 200.
 3. Login from Vercel frontend reaches Railway backend without CORS errors.
+
+---
+
+## Phase 11: Role-Based Portals & Separate Account Creation
+
+### 1. Architecture & Portals Separation
+- **Student Portal**:
+  - Dedicated sign-in (`/login`) and public registration (`/signup`).
+  - Public signups are strictly student-only. `role` field from client payloads is ignored or defaulted to `student` by backend serializers.
+  - Student navigation and views: Personal dashboard, Report Lost (`/lost`), Report Found (`/found`), Browse Items (`/found-items`), Campus Stations (`/stations`), My Reports (`/my-reports`), My Matches (`/my-matches`), Recovery (`/recovery`), Notifications (`/notifications`), Profile (`/profile`).
+  - Student accounts cannot access admin desk or staff operations.
+- **Admin Portal**:
+  - Separate Admin sign-in route (`/admin/login`).
+  - Backend login validates `portal='admin'`; student accounts attempting to log in on the Admin portal are rejected with HTTP 403 Forbidden.
+  - Dedicated staff user management API (`/api/auth/users/`):
+    - Admin accounts can **ONLY** be created by an authenticated Super Admin.
+    - Custodian accounts can be created by authenticated Admins or Super Admins.
+    - Public signup or unauthenticated callers receive HTTP 401/403.
+    - Never allows creating `superadmin` through the API.
+  - Root Super Admin setup preserved via backend command (`python manage.py createsuperuser`), automatically assigning `role='superadmin'`, `is_staff=True`, and `is_superuser=True`.
+  - Admin navigation and views: Admin Dashboard, Institutional Reports Management, User Management (`/admin/users`), Campus Stations (`/admin/collection-points`), Claims Review (`/admin/verification`), Handover Center (`/admin/handovers`), Disputes Management (`/admin/disputes`), Audit Log Browser, and Student Feedback Analytics.
+- **Custodian Portal**:
+  - Accounts provisioned by authorized Admin/Super Admin. No public registration option.
+  - Custodian navigation and views: Station Custodial Dashboard, Assigned Task Queue, Deposits & Physical Custody Queue, and Authorized Handovers (`/admin/handovers`).
+  - Custodians have zero access to User Management, Audit Log Browser, Station Configuration, or Dispute Resolution.
+  - Custodians cannot soft-delete or archive reports (Delete control hidden in UI and restricted to `IsAdmin` on backend).
+
+### 2. Backend Security & Authoritative Guards
+- `backend/accounts/models.py`:
+  - `UserManager.create_superuser`: sets `role='superadmin'`, `is_staff=True`, `is_superuser=True`.
+  - `User.save()`: guards role consistency with `is_staff` and `is_superuser`.
+- `backend/accounts/serializers.py`:
+  - `AdminCreateUserSerializer`: strictly limits assignable roles to `admin` and `custodian`.
+  - `StaffUserSerializer`: safe serialization of staff accounts without leaking sensitive password hashes.
+- `backend/accounts/views.py`:
+  - `LoginView`: blocks students from signing in to the admin portal (`portal='admin'`) with HTTP 403.
+  - `AdminUserManagementView`: enforces that creating `admin` requires `superadmin`, while creating `custodian` requires `admin` or `superadmin`.
+- `backend/audit/views.py`:
+  - `AuditLogViewSet`: restricted to `IsAdmin` (`admin`, `superadmin`). Custodians and students receive HTTP 403.
+- `backend/pickup/views.py`:
+  - `StaffDisputeViewSet`: restricted to `IsAdmin`.
+
+### 3. Verification & Automated Test Results
+- **Accounts Automated Test Suite**: PASS (22/22 tests passing in 29.980s):
+  - `test_login_portal_admin_rejects_student`: ✅ PASS (HTTP 403)
+  - `test_login_portal_admin_allows_admin_and_custodian`: ✅ PASS (HTTP 200)
+  - `test_admin_user_endpoint_security`: ✅ PASS (Unauthenticated 401, Student 403, Custodian 403, Admin cannot create Admin 403, Admin can create Custodian 201, Superadmin can create Admin 201, Superadmin can create Custodian 201, cannot create superadmin 400)
+  - `test_createsuperuser_sets_superadmin_role`: ✅ PASS (`role='superadmin'`)
+  - `test_role_security_audit_logs_and_disputes`: ✅ PASS (Audit logs: Student 403, Custodian 403, Admin 200; Disputes: Custodian 403, Admin 200)
+- **Collection Points Test Suite**: PASS (7/7 tests passing in 14.659s).
+- **Hide Found Details Security Test Suite**: PASS (9/9 tests passing in 25.708s).
+- **Django System Check**: PASS (`python manage.py check` — 0 issues).
+- **Django Migrations Check**: PASS (`python manage.py makemigrations --check --dry-run` — 0 unapplied changes).
+- **Frontend Production Build**: PASS (`tsc && vite build` — 0 errors, built in 1.06s).
+
+---
+
+## Phase 12: Role-Based Workflow Acceptance
+
+### Acceptance Matrix & Verification Results
+
+| # | Workflow / Acceptance Requirement | Verification Mechanism | Status |
+|---|---|---|---|
+| 1 | **Student signup always creates Student account**<br>Tampering with request payload (`role='admin'`, `'superadmin'`, `'custodian'`) is ignored; account is created strictly with `role='student'`, `is_staff=False`, `is_superuser=False`. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_1_student_signup_always_creates_student_role` | ✅ VERIFIED |
+| 2 | **Student login works at `/login`; Student login through `/admin/login` rejected**<br>Student credentials succeed with HTTP 200 and token on public portal (`portal='student'`); rejected with HTTP 403 Forbidden on staff portal (`portal='admin'`). Admin & Custodian accounts succeed on `/admin/login`. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_2_student_login_rejection_at_admin_portal` | ✅ VERIFIED |
+| 3 | **Super Admin creates Admin and Custodian accounts**<br>Super Admin (`/admin/users`) provisions Admin and Custodian accounts with HTTP 201; assignable roles strictly constrained to `admin` and `custodian`. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_3_superadmin_can_create_admin_and_custodian` | ✅ VERIFIED |
+| 4 | **Admin can create Custodian but cannot create Admin**<br>Admin provisioning Custodian succeeds with HTTP 201; Admin attempting to provision Admin returns HTTP 403 Forbidden ("Permission denied: only Super Admins can create Admin accounts."). | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_4_admin_can_create_custodian_not_admin` | ✅ VERIFIED |
+| 5 | **Custodian access bounded to assigned station & handovers**<br>Custodian can view stations (`/api/collection-points/`) and handovers (`/api/handovers/admin/`). Custodian blocked with HTTP 403 from User Management (`/api/auth/users/`), Audit Logs (`/api/audit/logs/`), Disputes Queue (`/api/pickup/disputes/admin/`), and report soft-deletion (`DELETE /api/items/found-items/{id}/`). | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_5_custodian_permissions_and_boundaries` | ✅ VERIFIED |
+| 6 | **Role dashboard, navigation, and metrics isolation**<br>Student dashboard shows personal lost/found items and recovery; blocked with HTTP 403 from `/api/items/admin-stats/`. Staff access operational metrics. Public trust metrics (`/api/items/public-stats/`) accessible to all. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_6_role_dashboard_metrics_isolation` | ✅ VERIFIED |
+| 7 | **Direct URL and API access blocked server-side**<br>Unauthenticated access returns HTTP 401. Student access to staff/admin routes (`/api/auth/users/`, `/api/audit/logs/`, `/api/pickup/disputes/admin/`, `/api/handovers/admin/`) returns HTTP 403. Frontend protected routes enforce role-based redirection. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_7_server_side_authorization_blocks` | ✅ VERIFIED |
+| 8 | **Refresh, logout, session persistence, role-specific redirects**<br>Session persistence verified via token bearer auth on `GET /api/auth/me/`. Logout clears token session via `POST /api/auth/logout/`. Role-specific routes direct student to Student Portal and staff to Admin Portal. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_8_session_persistence_and_logout` | ✅ VERIFIED |
+| 9 | **Private data exposure prevention**<br>Staff user endpoint (`/api/auth/users/`) excludes password hashes. Lost item private questionnaire answers isolated strictly to report owner (`GET /api/items/lost-items/{id}/` returns 404 for other students). Public catalog masks serial numbers, IMEIs, internal notes. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_9_private_data_never_exposed` | ✅ VERIFIED |
+| 10 | **Regression suite: Lost/Found, matching, notifications, IDs, handover OTP**<br>Unique ID generation (`RNT-L-*`, `RNT-F-*`), physical custody transitions, pickup requests, handover generation, 15-minute OTP lifecycle, brute-force lockout, single-use invalidation, and match notifications verified across full regression suite. | `accounts.tests_phase12_acceptance.Phase12WorkflowAcceptanceTests.test_workflow_10_lost_found_unique_ids_and_handover_flow`<br>`items.tests_unique_ids`<br>`items.tests_admin_handover_otp`<br>`items.tests_fraud_prevention` | ✅ VERIFIED |
+
+### Test Suite Execution Summary
+- `python manage.py test accounts.tests_phase12_acceptance`: **10/10 PASSED** (45.385s)
+- `python manage.py test accounts`: **32/32 PASSED** (84.923s)
+- `python manage.py test items.tests_unique_ids items.tests_admin_handover_otp items.tests_fraud_prevention`: **64/64 PASSED** (155.271s)
+- `python manage.py test collectionpoint`: **7/7 PASSED** (14.659s)
+- `python manage.py test items.tests_hide_found_details`: **9/9 PASSED** (25.708s)
+- `python manage.py check`: **0 issues**
+- `python manage.py makemigrations --check --dry-run`: **0 changes detected**
+- `npm run build`: **Built cleanly in 1.62s** (0 TypeScript errors)
+

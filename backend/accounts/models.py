@@ -21,6 +21,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('role', 'superadmin')
         if not email:
             raise ValueError('Superuser must have an email.')
         if extra_fields.get('is_staff') is not True or extra_fields.get('is_superuser') is not True:
@@ -54,6 +55,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         db_table = 'auth_user'
         verbose_name = 'user'
         verbose_name_plural = 'users'
+
+    def save(self, *args, **kwargs):
+        if self.is_superuser:
+            self.role = 'superadmin'
+            self.is_staff = True
+        elif self.role in ['admin', 'superadmin', 'custodian']:
+            self.is_staff = True
+        elif self.role == 'student' and not self.is_superuser:
+            self.is_staff = False
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.email} ({self.get_role_display()})"

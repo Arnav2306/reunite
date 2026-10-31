@@ -34,39 +34,54 @@ export const Navbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const isStaff = user?.role && ['custodian', 'admin', 'superadmin'].includes(user.role);
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const isCustodian = user?.role === 'custodian';
+  const isStudent = user?.role === 'student';
 
-  // Student navigation — covers the full user journey
+  // Student navigation — personal recovery journey
   const studentLinks = [
     { name: 'Dashboard', path: '/dashboard' },
     { name: 'Report Lost', path: '/lost' },
     { name: 'Report Found', path: '/found' },
-    { name: 'Found Items', path: '/found-items' },
+    { name: 'Browse Items', path: '/found-items' },
     { name: 'Stations', path: '/stations' },
     { name: 'My Reports', path: '/my-reports' },
     { name: 'My Matches', path: '/my-matches' },
     { name: 'Recovery', path: '/recovery' },
   ];
 
-  // Admin/custodian navigation — operational
+  // Admin navigation — reports, users, stations, custody, disputes, handovers, audit logs
   const adminLinks = [
     { name: 'Dashboard', path: '/dashboard' },
-    { name: 'Found Items', path: '/found-items' },
-    { name: 'Register Found', path: '/admin/register-found' },
+    { name: 'Reports', path: '/dashboard?tab=queue' },
+    { name: 'Users', path: '/admin/users' },
     { name: 'Stations', path: '/admin/collection-points' },
     { name: 'Claims', path: '/admin/verification' },
+    { name: 'Handovers', path: '/admin/handovers' },
+    { name: 'Disputes', path: '/admin/disputes' },
+  ];
+
+  // Custodian navigation — tasks, stations, deposits, physical custody, authorized handovers
+  const custodianLinks = [
+    { name: 'Dashboard', path: '/dashboard' },
+    { name: 'Tasks & Stations', path: '/dashboard?tab=tasks' },
+    { name: 'Deposits & Custody', path: '/dashboard?tab=queue' },
     { name: 'Handovers', path: '/admin/handovers' },
   ];
 
   const publicLinks = [
     { name: 'Home', path: '/' },
-    { name: 'Found Items', path: '/found-items' },
+    { name: 'Browse Items', path: '/found-items' },
     { name: 'Stations', path: '/stations' },
   ];
 
-  const navLinks = isAuthenticated
-    ? isStaff ? adminLinks : studentLinks
-    : publicLinks;
+  const navLinks = !isAuthenticated
+    ? publicLinks
+    : isAdmin
+    ? adminLinks
+    : isCustodian
+    ? custodianLinks
+    : studentLinks;
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
@@ -106,7 +121,7 @@ export const Navbar: React.FC = () => {
             {isAuthenticated ? (
               <>
                 {/* Quick action buttons for students */}
-                {!isStaff && (
+                {isStudent && (
                   <div className="flex items-center gap-1.5 mr-2">
                     <Link
                       to="/lost"
@@ -171,24 +186,24 @@ export const Navbar: React.FC = () => {
             ) : (
               <div className="flex items-center gap-2">
                 <Link
-                  to="/login?portal=staff"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                  title="Staff &amp; Custodian Access"
+                  to="/admin/login"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                  title="Admin &amp; Staff Access"
                 >
-                  <Shield className="w-3.5 h-3.5 text-slate-500" />
-                  Staff Desk
+                  <Shield className="w-3.5 h-3.5 text-slate-600" />
+                  Admin Portal
                 </Link>
                 <Link
                   to="/login"
                   className="px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 rounded-lg hover:bg-slate-50 transition-colors"
                 >
-                  Log in
+                  Student Login
                 </Link>
                 <Link
                   to="/signup"
                   className="px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors"
                 >
-                  Get Started
+                  Student Sign Up
                 </Link>
               </div>
             )}
@@ -243,7 +258,7 @@ export const Navbar: React.FC = () => {
       {mobileMenuOpen && (
         <div className="lg:hidden border-t border-slate-200 bg-white">
           {/* Student quick actions */}
-          {isAuthenticated && !isStaff && (
+          {isAuthenticated && isStudent && (
             <div className="px-4 pt-3 pb-2 grid grid-cols-2 gap-2">
               <Link
                 to="/lost"
@@ -320,20 +335,27 @@ export const Navbar: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
+                <Link
+                  to="/admin/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-center py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Admin Desk
+                </Link>
                 <Link
                   to="/login"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="text-center py-2.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="text-center py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  Log in
+                  Student Login
                 </Link>
                 <Link
                   to="/signup"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="text-center py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"
+                  className="text-center py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700"
                 >
-                  Get Started
+                  Sign Up
                 </Link>
               </div>
             )}

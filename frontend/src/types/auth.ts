@@ -21,6 +21,7 @@ export interface AuthResponse {
 export interface LoginCredentials {
   identifier: string;
   password: string;
+  portal?: 'student' | 'admin';
 }
 
 export interface SignupCredentials {
