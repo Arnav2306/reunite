@@ -401,5 +401,52 @@ class AccountsAuthTests(TestCase):
         call_command('setup_initial_superadmin', admin_id='RNT-CMD-001', password='CmdPassword123!', stdout=out_dup)
         self.assertIn('[ALREADY EXISTS]', out_dup.getvalue())
 
+        # Reset password securely via --reset-password
+        out_reset = StringIO()
+        call_command('setup_initial_superadmin', admin_id='RNT-CMD-001', password='NewCmdPassword123!', reset_password=True, stdout=out_reset)
+        self.assertIn('[SUCCESS]', out_reset.getvalue())
+        user.refresh_from_db()
+        self.assertTrue(user.check_password('NewCmdPassword123!'))
+
+        # Link admin_id to existing superuser by email
+        existing_su = User.objects.create_superuser(email='existing_root@campus.edu', password='RootPassword123!', name='Existing Root')
+        out_link = StringIO()
+        call_command('setup_initial_superadmin', admin_id='RNT-LINK-001', email='existing_root@campus.edu', stdout=out_link)
+        self.assertIn('[SUCCESS]', out_link.getvalue())
+        existing_su.refresh_from_db()
+        self.assertEqual(existing_su.admin_id, 'RNT-LINK-001')
+        self.assertTrue(existing_su.check_password('RootPassword123!'))
+
+    def test_case_insensitive_admin_id_login_and_backend(self):
+        su = User(
+            admin_id='RNT-CASE-001',
+            name='Case Super',
+            role='superadmin',
+            is_staff=True,
+            is_superuser=True,
+            is_active=True,
+        )
+        su.set_password('Secret123!')
+        su.save()
+
+        # Login with lowercase admin_id
+        resp_lower = self.client.post('/api/auth/login/', {
+            'identifier': 'rnt-case-001',
+            'password': 'Secret123!',
+            'portal': 'admin'
+        }, format='json')
+        self.assertEqual(resp_lower.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp_lower.data['user']['admin_id'], 'RNT-CASE-001')
+
+        # Test Django standard authenticate() via CaseInsensitiveIdentifierAuthBackend
+        from django.contrib.auth import authenticate
+        auth_user = authenticate(username='rnt-case-001', password='Secret123!')
+        self.assertIsNotNone(auth_user)
+        self.assertEqual(auth_user.admin_id, 'RNT-CASE-001')
+
+        # Test natural key lookup
+        nat_user = User.objects.get_by_natural_key('rnt-case-001')
+        self.assertEqual(nat_user.id, su.id)
+
 
 

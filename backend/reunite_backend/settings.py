@@ -103,6 +103,11 @@ INSTALLED_APPS = [
 # Custom user model
 AUTH_USER_MODEL = 'accounts.User'
 
+AUTHENTICATION_BACKENDS = [
+    'accounts.authentication.CaseInsensitiveIdentifierAuthBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 # Rest Framework defaults
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

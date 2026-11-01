@@ -27,24 +27,28 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        # Support either identifier or email/username
+        # Support either identifier or admin_id/email/username/mobile
         data = request.data.copy()
-        if 'identifier' not in data:
-            if 'admin_id' in data:
-                data['identifier'] = data['admin_id']
-            elif 'email' in data:
-                data['identifier'] = data['email']
-            elif 'username' in data:
-                data['identifier'] = data['username']
-            elif 'mobile_number' in data:
-                data['identifier'] = data['mobile_number']
+        raw_identifier = (
+            data.get('identifier')
+            or data.get('admin_id')
+            or data.get('email')
+            or data.get('username')
+            or data.get('mobile_number')
+            or ''
+        )
+        data['identifier'] = str(raw_identifier).strip()
+        portal = (data.get('portal') or '').strip().lower()
+        if portal == 'admin' and 'admin_id' not in data and '@' not in data['identifier']:
+            data['admin_id'] = data['identifier']
 
         serializer = LoginSerializer(data=data)
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            portal = data.get('portal')
             if portal == 'admin':
-                if getattr(user, 'role', '') not in ['custodian', 'admin', 'superadmin'] and not getattr(user, 'is_staff', False):
+                user_role = getattr(user, 'role', '')
+                is_staff_user = getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False)
+                if user_role not in ['custodian', 'admin', 'superadmin'] and not is_staff_user:
                     return Response({
                         'detail': 'Access denied: student accounts cannot sign in through the Admin Portal. Please use the Student Portal.'
                     }, status=status.HTTP_403_FORBIDDEN)

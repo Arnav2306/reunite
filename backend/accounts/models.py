@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 import uuid
 
@@ -27,6 +28,20 @@ class UserManager(BaseUserManager):
         if extra_fields.get('is_staff') is not True or extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_staff=True and is_superuser=True.')
         return self._create_user(email, password, **extra_fields)
+
+    def get_by_natural_key(self, username):
+        if not username:
+            raise self.model.DoesNotExist
+        cleaned = str(username).strip()
+        user = self.filter(
+            Q(admin_id__iexact=cleaned)
+            | Q(email__iexact=cleaned)
+            | Q(personal_email__iexact=cleaned)
+            | Q(mobile_number=cleaned)
+        ).first()
+        if not user:
+            raise self.model.DoesNotExist
+        return user
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = [
@@ -58,10 +73,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name_plural = 'users'
 
     def save(self, *args, **kwargs):
-        if self.is_superuser:
+        if self.admin_id:
+            self.admin_id = self.admin_id.strip()
+        if self.is_superuser or self.role == 'superadmin':
             self.role = 'superadmin'
             self.is_staff = True
-        elif self.role in ['admin', 'superadmin', 'custodian']:
+            self.is_superuser = True
+        elif self.role in ['admin', 'custodian']:
             self.is_staff = True
         elif self.role == 'student' and not self.is_superuser:
             self.is_staff = False

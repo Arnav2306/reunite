@@ -148,14 +148,30 @@ class AdminCreateUserSerializer(serializers.Serializer):
 def find_user_by_identifier(identifier: str):
     """
     Find user by admin_id, email, personal_email, or mobile number with normalization:
-    - Admin ID exact match (case-insensitive)
+    - Admin ID exact match (case-insensitive) - checked with high priority
     - Case-insensitive email and personal_email matching
     - Mobile matching with whitespace/dash/parentheses stripping
     - Handles variations with or without country code (+91, 91, 0) and 10-digit suffixes
     """
     if not identifier:
         return None
-    cleaned = identifier.strip()
+    cleaned = str(identifier).strip()
+    if not cleaned:
+        return None
+
+    # Priority 1: Direct case-insensitive Admin ID lookup
+    admin_match = User.objects.filter(admin_id__iexact=cleaned).first()
+    if admin_match:
+        return admin_match
+
+    # Priority 2: Direct case-insensitive email lookup
+    if '@' in cleaned:
+        email_match = User.objects.filter(
+            Q(email__iexact=cleaned) | Q(personal_email__iexact=cleaned)
+        ).first()
+        if email_match:
+            return email_match
+
     import re
     phone_candidates = {cleaned}
     if any(c.isdigit() for c in cleaned):
@@ -182,11 +198,14 @@ def find_user_by_identifier(identifier: str):
     ).first()
 
 class LoginSerializer(serializers.Serializer):
-    identifier = serializers.CharField(help_text="Admin ID, email, or mobile number")
+    identifier = serializers.CharField(required=False, allow_blank=True, help_text="Admin ID, email, or mobile number")
+    admin_id = serializers.CharField(required=False, allow_blank=True, help_text="Explicit Admin ID (optional)")
     password = serializers.CharField(write_only=True)
+    portal = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, attrs):
-        identifier = attrs.get('identifier', '').strip()
+        raw_id = attrs.get('identifier') or attrs.get('admin_id') or ''
+        identifier = str(raw_id).strip()
         password = attrs.get('password', '')
 
         if not identifier or not password:

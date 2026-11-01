@@ -57,6 +57,7 @@ export const LoginPage: React.FC = () => {
     try {
       await login({
         identifier: trimmedIdentifier,
+        admin_id: portalMode === 'admin' ? trimmedIdentifier : undefined,
         password,
         portal: portalMode === 'admin' ? 'admin' : 'student',
       });

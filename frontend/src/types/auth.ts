@@ -20,6 +20,7 @@ export interface AuthResponse {
 
 export interface LoginCredentials {
   identifier: string;
+  admin_id?: string;
   password: string;
   portal?: 'student' | 'admin';
 }
